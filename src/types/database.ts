@@ -39,6 +39,7 @@ export type SkillWithStatus = Skill & {
   status:           SkillStatus
   prerequisite_ids: string[]
   user_mg_xp:       number
+  is_recorded:      boolean
 }
 
 export type Exercise = {

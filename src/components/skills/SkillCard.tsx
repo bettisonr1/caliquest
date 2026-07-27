@@ -1,6 +1,9 @@
 'use client'
 
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Lock, CheckCircle, Zap } from 'lucide-react'
+import { unlockSkillAction } from '@/app/(app)/skills/actions'
 import type { SkillWithStatus, Difficulty, MuscleGroup } from '@/types/database'
 
 const difficultyLabel: Record<Difficulty, { label: string; className: string }> = {
@@ -37,13 +40,30 @@ function XPBar({ current, required }: { current: number; required: number }) {
 }
 
 export function SkillCard({ skill }: { skill: SkillWithStatus }) {
-  const { status, name, difficulty, required_mg_xp, user_mg_xp } = skill
+  const router = useRouter()
+  const { status, name, difficulty, required_mg_xp, user_mg_xp, is_recorded } = skill
   const diff = difficultyLabel[difficulty]
   const borderColor = muscleGroupColor[skill.muscle_group]
 
-  const isUnlocked    = status === 'unlocked'
-  const isInProgress  = status === 'in_progress'
-  const isLocked      = status === 'locked'
+  const [unlocking, setUnlocking] = useState(false)
+  const [unlockError, setUnlockError] = useState<string | null>(null)
+
+  const isUnlocked      = status === 'unlocked'
+  const isInProgress    = status === 'in_progress'
+  const isLocked        = status === 'locked'
+  const readyToUnlock   = isUnlocked && !is_recorded
+
+  async function handleUnlock() {
+    setUnlocking(true)
+    setUnlockError(null)
+    const result = await unlockSkillAction(skill.id)
+    if (result.ok === false) {
+      setUnlockError(result.error)
+      setUnlocking(false)
+      return
+    }
+    router.refresh()
+  }
 
   return (
     <div
@@ -58,9 +78,9 @@ export function SkillCard({ skill }: { skill: SkillWithStatus }) {
         <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${diff.className}`}>
           {diff.label}
         </span>
-        {isUnlocked   && <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />}
-        {isInProgress && <Zap className="h-4 w-4 text-emerald-400 shrink-0" />}
-        {isLocked     && <Lock className="h-4 w-4 text-gray-600 shrink-0" />}
+        {isUnlocked && !readyToUnlock && <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />}
+        {(isInProgress || readyToUnlock) && <Zap className="h-4 w-4 text-emerald-400 shrink-0" />}
+        {isLocked && <Lock className="h-4 w-4 text-gray-600 shrink-0" />}
       </div>
 
       <p className={`text-sm font-semibold leading-tight ${isUnlocked ? 'text-white' : 'text-gray-300'}`}>
@@ -71,8 +91,24 @@ export function SkillCard({ skill }: { skill: SkillWithStatus }) {
         <XPBar current={user_mg_xp} required={required_mg_xp} />
       )}
 
-      {isUnlocked && (
+      {isUnlocked && !readyToUnlock && (
         <p className="mt-2 text-[11px] text-emerald-400 font-medium">Unlocked</p>
+      )}
+
+      {readyToUnlock && (
+        <div className="mt-2 space-y-1">
+          <button
+            type="button"
+            onClick={handleUnlock}
+            disabled={unlocking}
+            className="w-full text-[11px] font-semibold px-2 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white transition-colors"
+          >
+            {unlocking ? 'Unlocking…' : 'Unlock'}
+          </button>
+          {unlockError && (
+            <p className="text-[10px] text-red-400">{unlockError}</p>
+          )}
+        </div>
       )}
     </div>
   )
