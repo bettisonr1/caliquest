@@ -68,3 +68,11 @@ export type WorkoutSet = {
   duration_seconds: number | null
   xp_earned:        number
 }
+
+export type WorkoutSetWithExercise = WorkoutSet & {
+  exercises: Exercise | null
+}
+
+export type WorkoutWithSets = Workout & {
+  workout_sets: WorkoutSetWithExercise[]
+}
