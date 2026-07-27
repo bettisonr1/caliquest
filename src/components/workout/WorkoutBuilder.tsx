@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { Clock, Dumbbell, Plus, Repeat, Trash2, Trophy, X, Zap } from 'lucide-react'
-import { saveWorkout } from '@/app/(app)/workout/actions'
+import { saveWorkoutAction } from '@/app/(app)/workout/actions'
 import { xpForSet } from '@/lib/xp'
 import type { Exercise, MuscleGroup } from '@/types/database'
 
@@ -78,25 +78,25 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
   const finish = () => {
     setError(null)
     startTransition(async () => {
-      const result = await saveWorkout(
+      const result = await saveWorkoutAction(
         entries.map(entry => ({
           exerciseId: entry.exercise.id,
           sets: entry.sets.map(s => {
             const n = parseInt(s.value, 10)
             const v = isNaN(n) ? 0 : n
             return entry.exercise.type === 'reps'
-              ? { reps: v, durationSeconds: null }
-              : { reps: null, durationSeconds: v }
+              ? { reps: v, duration_seconds: null }
+              : { reps: null, duration_seconds: v }
           }),
         })),
         notes
       )
-      if (result.ok) {
+      if (result.ok === false) {
+        setError(result.error)
+      } else {
         setSaved(result)
         setEntries([])
         setNotes('')
-      } else {
-        setError(result.error)
       }
     })
   }

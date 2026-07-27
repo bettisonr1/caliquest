@@ -36,10 +36,10 @@ export function ProfileEditor({ username: initialUsername, avatarUrl }: Props) {
         avatarEmoji: emoji,
         avatarBackground: background,
       })
-      if (result.ok) {
-        setEditing(false)
-      } else {
+      if (result.ok === false) {
         setError(result.error)
+      } else {
+        setEditing(false)
       }
     })
   }
