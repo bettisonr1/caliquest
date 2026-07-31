@@ -1,11 +1,21 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Workout, WorkoutSet } from '@/types/database'
 
-export async function createWorkout(supabase: SupabaseClient, userId: string) {
+export async function createWorkout(
+  supabase: SupabaseClient,
+  userId: string,
+  options?: { totalXp?: number; notes?: string | null }
+) {
   const now = new Date().toISOString()
   const { data, error } = await supabase
     .from('workouts')
-    .insert({ user_id: userId, started_at: now, completed_at: now })
+    .insert({
+      user_id: userId,
+      started_at: now,
+      completed_at: now,
+      total_xp: options?.totalXp ?? 0,
+      notes: options?.notes ?? null,
+    })
     .select()
     .single()
   if (error) throw error
@@ -19,6 +29,7 @@ export async function createWorkoutSets(
     exercise_id: string
     reps: number | null
     duration_seconds: number | null
+    xp_earned?: number
   }>
 ) {
   const { data, error } = await supabase

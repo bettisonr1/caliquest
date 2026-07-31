@@ -19,3 +19,12 @@ export async function getExerciseById(supabase: SupabaseClient, exerciseId: stri
   if (error) throw error
   return data as Exercise | null
 }
+
+export async function getAllExercises(supabase: SupabaseClient) {
+  const { data, error } = await supabase
+    .from('exercises')
+    .select('*')
+    .order('name')
+  if (error) throw error
+  return data as Exercise[]
+}

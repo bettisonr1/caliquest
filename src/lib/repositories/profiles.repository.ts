@@ -21,3 +21,29 @@ export async function getProfile(supabase: SupabaseClient, userId: string) {
   if (error) throw error
   return data as Profile
 }
+
+export async function updateMuscleGroupXP(
+  supabase: SupabaseClient,
+  userId: string,
+  muscleGroup: MuscleGroup,
+  xp: number
+) {
+  const { error } = await supabase
+    .from('muscle_group_xp')
+    .update({ xp })
+    .eq('user_id', userId)
+    .eq('muscle_group', muscleGroup)
+  if (error) throw error
+}
+
+export async function updateProfileAfterWorkout(
+  supabase: SupabaseClient,
+  userId: string,
+  fields: { total_xp: number; level: number; streak_days: number; last_workout_at: string }
+) {
+  const { error } = await supabase
+    .from('profiles')
+    .update(fields)
+    .eq('user_id', userId)
+  if (error) throw error
+}

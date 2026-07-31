@@ -1,30 +1,33 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getWorkoutLoggingOptions } from '@/lib/services/workout-logging.service'
-import { LogWorkoutForm } from '@/components/workout/LogWorkoutForm'
+import { WorkoutBuilder } from '@/components/workout/WorkoutBuilder'
 
 export default async function WorkoutPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { skills, exercisesBySkillId } = await getWorkoutLoggingOptions(user.id)
+  const { exercisesBySkillId } = await getWorkoutLoggingOptions(user.id)
+  const exercises = Object.values(exercisesBySkillId)
+    .flat()
+    .sort((a, b) => a.name.localeCompare(b.name))
 
   return (
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-white">Log Workout</h1>
         <p className="text-gray-400 text-sm mt-1">
-          Pick a skill you&apos;ve unlocked, log your sets and reps.
+          Build your workout from any exercises you&apos;ve unlocked, log your sets, earn XP.
         </p>
       </div>
 
-      {skills.length === 0 ? (
+      {exercises.length === 0 ? (
         <p className="text-gray-500 text-sm">
           Unlock a skill first, then come back to log a workout.
         </p>
       ) : (
-        <LogWorkoutForm skills={skills} exercisesBySkillId={exercisesBySkillId} />
+        <WorkoutBuilder exercises={exercises} />
       )}
     </div>
   )
