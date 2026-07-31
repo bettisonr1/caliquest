@@ -104,6 +104,18 @@ create table if not exists public.user_quests (
   completed_at timestamptz
 );
 
+-- Friend connections (request/accept model)
+create table if not exists public.friendships (
+  id            uuid primary key default gen_random_uuid(),
+  requester_id  uuid references public.profiles(user_id) on delete cascade,
+  addressee_id  uuid references public.profiles(user_id) on delete cascade,
+  status        text not null default 'pending' check (status in ('pending','accepted')),
+  created_at    timestamptz not null default now(),
+  responded_at  timestamptz,
+  check (requester_id <> addressee_id),
+  unique (requester_id, addressee_id)
+);
+
 -- ============================================================
 -- Level calculation function (exponential curve, ×1.5 per level)
 -- ============================================================
@@ -155,13 +167,26 @@ alter table public.user_skills      enable row level security;
 alter table public.workouts         enable row level security;
 alter table public.workout_sets     enable row level security;
 alter table public.user_quests      enable row level security;
+alter table public.friendships      enable row level security;
 alter table public.skills           enable row level security;
 alter table public.skill_prerequisites enable row level security;
 alter table public.exercises        enable row level security;
 alter table public.quests           enable row level security;
 
 -- profiles
-create policy "Users can view own profile"   on public.profiles for select using (auth.uid() = user_id);
+-- Readable by the owner, or by anyone who has any friendship row (pending or
+-- accepted) with them — this is what lets a friend request list, and a
+-- friends list, render real usernames without opening profiles up globally.
+create policy "Users can view own or connected profiles" on public.profiles
+  for select using (
+    auth.uid() = user_id
+    or exists (
+      select 1 from public.friendships f
+      where f.status in ('pending','accepted')
+        and ((f.requester_id = auth.uid() and f.addressee_id = profiles.user_id)
+          or (f.addressee_id = auth.uid() and f.requester_id = profiles.user_id))
+    )
+  );
 create policy "Users can update own profile" on public.profiles for update using (auth.uid() = user_id);
 
 -- muscle_group_xp
@@ -195,3 +220,35 @@ create policy "Skills readable by authenticated users"             on public.ski
 create policy "Prerequisites readable by authenticated users"      on public.skill_prerequisites for select using (auth.role() = 'authenticated');
 create policy "Exercises readable by authenticated users"          on public.exercises          for select using (auth.role() = 'authenticated');
 create policy "Quests readable by authenticated users"             on public.quests             for select using (auth.role() = 'authenticated');
+
+-- friendships
+create policy "Users can view their own friendships" on public.friendships
+  for select using (auth.uid() = requester_id or auth.uid() = addressee_id);
+create policy "Users can send friend requests" on public.friendships
+  for insert with check (auth.uid() = requester_id);
+create policy "Addressee can accept a request" on public.friendships
+  for update using (auth.uid() = addressee_id) with check (auth.uid() = addressee_id);
+create policy "Either party can delete a friendship" on public.friendships
+  for delete using (auth.uid() = requester_id or auth.uid() = addressee_id);
+
+-- ============================================================
+-- Username search (minimal public fields, bypasses profiles RLS
+-- via security definer — used to find a stranger before any
+-- friendships row exists between the two users)
+-- ============================================================
+create or replace function public.search_profiles_by_username(query text)
+returns table (user_id uuid, username text, avatar_url text)
+language sql
+security definer
+set search_path = public
+as $$
+  select user_id, username, avatar_url
+  from public.profiles
+  where username ilike '%' || query || '%'
+    and user_id <> auth.uid()
+  order by username
+  limit 20;
+$$;
+
+revoke all on function public.search_profiles_by_username(text) from public;
+grant execute on function public.search_profiles_by_username(text) to authenticated;

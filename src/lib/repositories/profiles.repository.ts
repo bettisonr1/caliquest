@@ -36,6 +36,16 @@ export async function updateMuscleGroupXP(
   if (error) throw error
 }
 
+export async function getProfilesByUserIds(supabase: SupabaseClient, userIds: string[]) {
+  if (userIds.length === 0) return []
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .in('user_id', userIds)
+  if (error) throw error
+  return data as Profile[]
+}
+
 export async function updateProfileAfterWorkout(
   supabase: SupabaseClient,
   userId: string,

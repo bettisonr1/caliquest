@@ -1,10 +1,12 @@
 import Link from 'next/link'
-import { Dumbbell, LayoutDashboard, Map, ScrollText, Trophy, User } from 'lucide-react'
+import { Dumbbell, LayoutDashboard, Map, ScrollText, Trophy, User, Users } from 'lucide-react'
+import { LogoutButton } from '@/components/auth/LogoutButton'
 
 const navItems = [
   { href: '/dashboard',   label: 'Dashboard',  icon: LayoutDashboard },
   { href: '/workout',     label: 'Workout',    icon: Dumbbell        },
   { href: '/skills',      label: 'Skills',     icon: Map             },
+  { href: '/friends',     label: 'Friends',    icon: Users           },
   { href: '/quests',      label: 'Quests',     icon: ScrollText      },
   { href: '/leaderboard', label: 'Leaderboard',icon: Trophy          },
   { href: '/profile',     label: 'Profile',    icon: User            },
@@ -29,6 +31,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 {label}
               </Link>
             ))}
+            <LogoutButton />
           </nav>
         </div>
       </header>
