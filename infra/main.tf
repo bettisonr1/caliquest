@@ -47,6 +47,8 @@ resource "aws_amplify_app" "caliquest" {
     NEXT_PUBLIC_SUPABASE_URL      = var.supabase_url
     NEXT_PUBLIC_SUPABASE_ANON_KEY = var.supabase_anon_key
     DB_PASS                       = var.db_pass
+    OPENAI_API_KEY                = var.openai_api_key
+    ANTHROPIC_API_KEY             = var.anthropic_api_key
   }
 }
 
