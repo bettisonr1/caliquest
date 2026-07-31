@@ -77,3 +77,16 @@ export type WorkoutSetWithExercise = WorkoutSet & {
 export type WorkoutWithSets = Workout & {
   workout_sets: WorkoutSetWithExercise[]
 }
+
+export type FriendshipStatus = 'pending' | 'accepted'
+
+export type Friendship = {
+  id:           string
+  requester_id: string
+  addressee_id: string
+  status:       FriendshipStatus
+  created_at:   string
+  responded_at: string | null
+}
+
+export type PublicProfile = Pick<Profile, 'user_id' | 'username' | 'avatar_url'>
