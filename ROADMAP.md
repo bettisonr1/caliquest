@@ -4,7 +4,7 @@
 - **Frontend + API:** Next.js (App Router, TypeScript)
 - **Database + Auth:** Supabase (Postgres, built-in auth)
 - **Styling:** Tailwind CSS
-- **Deploy:** Vercel
+- **Deploy:** AWS Amplify Hosting
 
 ---
 
