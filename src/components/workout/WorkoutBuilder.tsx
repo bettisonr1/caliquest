@@ -1,10 +1,16 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
-import { Clock, Dumbbell, Plus, Repeat, Trash2, Trophy, X, Zap } from 'lucide-react'
+import dynamic from 'next/dynamic'
+import { Clock, Dumbbell, Plus, Repeat, Trash2, X, Zap } from 'lucide-react'
 import { saveWorkoutAction } from '@/app/(app)/workout/actions'
 import { xpForSet } from '@/lib/xp'
 import type { Exercise, MuscleGroup } from '@/types/database'
+
+const FlexAvatar = dynamic(
+  () => import('./FlexAvatar').then(m => m.FlexAvatar),
+  { ssr: false, loading: () => <div className="h-56" /> }
+)
 
 const muscleGroups: { group: MuscleGroup; label: string; text: string; chip: string }[] = [
   { group: 'pull',     label: 'Pull',     text: 'text-blue-400',    chip: 'bg-blue-500/20 text-blue-400'       },
@@ -31,7 +37,12 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
   const [filter, setFilter] = useState<MuscleGroup | 'all'>('all')
   const [notes, setNotes] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [saved, setSaved] = useState<{ xpEarned: number; newLevel: number; leveledUp: boolean } | null>(null)
+  const [saved, setSaved] = useState<{
+    xpEarned: number
+    newLevel: number
+    leveledUp: boolean
+    workedGroups: MuscleGroup[]
+  } | null>(null)
   const [isPending, startTransition] = useTransition()
 
   const visibleExercises = useMemo(
@@ -94,7 +105,17 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
       if (result.ok === false) {
         setError(result.error)
       } else {
-        setSaved(result)
+        const workedSet = new Set(
+          entries
+            .filter(entry => entry.sets.some(s => setXp(entry.exercise, s.value) > 0))
+            .map(entry => entry.exercise.muscle_group)
+        )
+        setSaved({
+          xpEarned: result.xpEarned,
+          newLevel: result.newLevel,
+          leveledUp: result.leveledUp,
+          workedGroups: muscleGroups.map(m => m.group).filter(g => workedSet.has(g)),
+        })
         setEntries([])
         setNotes('')
       }
@@ -104,8 +125,19 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
   if (saved) {
     return (
       <div className="max-w-md mx-auto rounded-2xl border border-emerald-500/40 bg-gray-900 p-8 text-center">
-        <Trophy className="h-10 w-10 text-emerald-400 mx-auto mb-4" />
+        <FlexAvatar workedGroups={saved.workedGroups} />
         <h2 className="text-xl font-bold text-white">Workout complete!</h2>
+        {saved.workedGroups.length > 0 && (
+          <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+            {muscleGroups
+              .filter(m => saved.workedGroups.includes(m.group))
+              .map(m => (
+                <span key={m.group} className={`px-2.5 py-1 rounded-full text-xs font-semibold ${m.chip}`}>
+                  {m.label}
+                </span>
+              ))}
+          </div>
+        )}
         <p className="mt-2 text-3xl font-bold text-emerald-400">+{saved.xpEarned.toLocaleString()} XP</p>
         {saved.leveledUp && (
           <p className="mt-2 text-sm font-semibold text-yellow-400">
