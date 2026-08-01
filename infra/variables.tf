@@ -38,3 +38,15 @@ variable "db_pass" {
   type        = string
   sensitive   = true
 }
+
+variable "openai_api_key" {
+  description = "OpenAI API key (OPENAI_API_KEY) for Whisper transcription. Pass via TF_VAR_openai_api_key, never commit it."
+  type        = string
+  sensitive   = true
+}
+
+variable "anthropic_api_key" {
+  description = "Anthropic API key (ANTHROPIC_API_KEY) for workout parsing. Pass via TF_VAR_anthropic_api_key, never commit it."
+  type        = string
+  sensitive   = true
+}

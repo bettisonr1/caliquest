@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from 'react'
 import dynamic from 'next/dynamic'
 import { Clock, Dumbbell, Plus, Repeat, Trash2, X, Zap } from 'lucide-react'
 import { saveWorkoutAction } from '@/app/(app)/workout/actions'
+import { VoiceLogButton } from './VoiceLogButton'
 import { xpForSet } from '@/lib/xp'
 import type { Exercise, MuscleGroup } from '@/types/database'
 
@@ -36,6 +37,7 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
   const [nextKey, setNextKey] = useState(0)
   const [filter, setFilter] = useState<MuscleGroup | 'all'>('all')
   const [notes, setNotes] = useState('')
+  const [unmatched, setUnmatched] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<{
     xpEarned: number
@@ -62,6 +64,25 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
   const addExercise = (exercise: Exercise) => {
     setEntries(prev => [...prev, { key: nextKey, exercise, sets: [{ value: '' }] }])
     setNextKey(k => k + 1)
+  }
+
+  const addParsedEntries = (
+    parsed: { exerciseId: string; sets: { value: string }[] }[],
+    unmatchedPhrases: string[]
+  ) => {
+    const matched = parsed
+      .map(p => ({ exercise: exercises.find(e => e.id === p.exerciseId), sets: p.sets }))
+      .filter((p): p is { exercise: Exercise; sets: EntrySet[] } => p.exercise !== undefined)
+    setEntries(prev => [
+      ...prev,
+      ...matched.map((p, i) => ({
+        key: nextKey + i,
+        exercise: p.exercise,
+        sets: p.sets.length > 0 ? p.sets : [{ value: '' }],
+      })),
+    ])
+    setNextKey(k => k + matched.length)
+    setUnmatched(unmatchedPhrases)
   }
 
   const removeEntry = (key: number) =>
@@ -159,6 +180,19 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
       {/* Exercise picker */}
       <aside className="rounded-2xl border border-gray-800 bg-gray-900 p-4 lg:sticky lg:top-20">
         <h2 className="text-sm font-bold text-white uppercase tracking-widest mb-3">Add exercise</h2>
+        <VoiceLogButton onParsed={addParsedEntries} />
+        {unmatched.length > 0 && (
+          <div className="mb-3 flex items-start justify-between gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-300">
+            <span>Couldn&apos;t match: {unmatched.join(', ')} — add these manually.</span>
+            <button
+              onClick={() => setUnmatched([])}
+              className="shrink-0 text-yellow-300/70 hover:text-yellow-300"
+              aria-label="Dismiss unmatched exercises note"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
         <div className="flex flex-wrap gap-1.5 mb-3">
           <button
             onClick={() => setFilter('all')}
