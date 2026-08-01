@@ -46,6 +46,24 @@ export async function getProfilesByUserIds(supabase: SupabaseClient, userIds: st
   return data as Profile[]
 }
 
+// Marks the profile as onboarded and applies the seeded XP in one conditional
+// update. Returns false if the profile was already onboarded (the .is() filter
+// matched no rows), which makes onboarding safe against double submission.
+export async function claimOnboarding(
+  supabase: SupabaseClient,
+  userId: string,
+  fields: { total_xp: number; level: number; onboarding_xp: number }
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ ...fields, onboarded_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .is('onboarded_at', null)
+    .select('user_id')
+  if (error) throw error
+  return (data ?? []).length > 0
+}
+
 export async function updateProfileAfterWorkout(
   supabase: SupabaseClient,
   userId: string,

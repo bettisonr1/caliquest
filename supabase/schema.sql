@@ -13,8 +13,21 @@ create table if not exists public.profiles (
   prestige_tier  text not null default 'Novice',
   streak_days    integer not null default 0,
   last_workout_at timestamptz,
+  -- First-login placement: when the user completed onboarding, and how much
+  -- XP was seeded from their claimed skills (so "earned XP" can be derived
+  -- later as total_xp - onboarding_xp).
+  onboarded_at   timestamptz,
+  onboarding_xp  integer not null default 0,
   created_at     timestamptz not null default now()
 );
+
+-- Migration for databases created before onboarding existed
+-- ("create table if not exists" above won't add new columns):
+alter table public.profiles add column if not exists onboarded_at  timestamptz;
+alter table public.profiles add column if not exists onboarding_xp integer not null default 0;
+-- Optional: mark accounts that pre-date onboarding as already onboarded so
+-- they aren't sent through the placement flow:
+-- update public.profiles set onboarded_at = now() where onboarded_at is null and total_xp > 0;
 
 -- XP per muscle group per user
 create table if not exists public.muscle_group_xp (

@@ -43,3 +43,14 @@ export async function insertUserSkill(supabase: SupabaseClient, userId: string, 
     .insert({ user_id: userId, skill_id: skillId })
   if (error) throw error
 }
+
+export async function insertUserSkills(supabase: SupabaseClient, userId: string, skillIds: string[]) {
+  if (skillIds.length === 0) return
+  const { error } = await supabase
+    .from('user_skills')
+    .upsert(
+      skillIds.map(skill_id => ({ user_id: userId, skill_id })),
+      { onConflict: 'user_id,skill_id', ignoreDuplicates: true }
+    )
+  if (error) throw error
+}

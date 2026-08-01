@@ -41,6 +41,34 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // First-login placement: send new users to /onboarding until they complete
+  // it, and keep onboarded users out of it. /auth/* (OAuth callback) and the
+  // landing page are left alone.
+  const isOnboardingRoute = request.nextUrl.pathname.startsWith('/onboarding')
+  const isAuthCallback = request.nextUrl.pathname.startsWith('/auth')
+  if (user && !isAuthCallback && request.nextUrl.pathname !== '/') {
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('onboarded_at')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    // Fail open: if the status can't be read (e.g. schema migration not yet
+    // applied), don't trap the whole app behind /onboarding.
+    if (error) return supabaseResponse
+    const onboarded = Boolean(profile?.onboarded_at)
+
+    if (!onboarded && !isOnboardingRoute) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/onboarding'
+      return NextResponse.redirect(url)
+    }
+    if (onboarded && isOnboardingRoute) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
+  }
+
   return supabaseResponse
 }
 

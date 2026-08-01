@@ -23,12 +23,15 @@ export function VoiceLogButton({
   const [error, setError] = useState<string | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
+  const recordingStartedAtRef = useRef<number>(0)
 
   const startRecording = async () => {
     setError(null)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
+      // Browsers otherwise pick their own (often fairly low) bitrate for
+      // voice, which can introduce compression artifacts on short phrases.
+      const recorder = new MediaRecorder(stream, { audioBitsPerSecond: 128_000 })
       chunksRef.current = []
 
       recorder.ondataavailable = e => {
@@ -36,11 +39,13 @@ export function VoiceLogButton({
       }
       recorder.onstop = () => {
         stream.getTracks().forEach(track => track.stop())
-        void processRecording(new Blob(chunksRef.current, { type: recorder.mimeType }))
+        const durationMs = Date.now() - recordingStartedAtRef.current
+        void processRecording(new Blob(chunksRef.current, { type: recorder.mimeType }), durationMs)
       }
 
       recorderRef.current = recorder
       recorder.start()
+      recordingStartedAtRef.current = Date.now()
       setStatus('recording')
     } catch {
       setError('Could not access the microphone. Check your browser permissions.')
@@ -53,10 +58,11 @@ export function VoiceLogButton({
     recorderRef.current = null
   }
 
-  const processRecording = async (audioBlob: Blob) => {
+  const processRecording = async (audioBlob: Blob, durationMs: number) => {
     setStatus('transcribing')
     const formData = new FormData()
     formData.append('audio', audioBlob)
+    formData.append('durationMs', String(durationMs))
 
     const transcribed = await transcribeAudioAction(formData)
     if (transcribed.ok === false) {
@@ -99,6 +105,11 @@ export function VoiceLogButton({
         )}
         {statusLabels[status]}
       </button>
+      {(status === 'idle' || status === 'recording') && (
+        <p className="mt-1.5 text-xs text-gray-500">
+          Say a full sentence for best results, e.g. &ldquo;3 sets of 10 shoulder dislocates&rdquo;.
+        </p>
+      )}
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
     </div>
   )

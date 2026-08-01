@@ -12,6 +12,8 @@ export type Profile = {
   prestige_tier:  string
   streak_days:    number
   last_workout_at: string | null
+  onboarded_at:   string | null
+  onboarding_xp:  number
 }
 
 export type MuscleGroupXP = {
