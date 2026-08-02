@@ -80,6 +80,16 @@ export type WorkoutWithSets = Workout & {
   workout_sets: WorkoutSetWithExercise[]
 }
 
+export type WorkoutFistbump = {
+  workout_id: string
+  user_id:    string
+  created_at: string
+}
+
+export type WorkoutWithBumps = WorkoutWithSets & {
+  workout_fistbumps: Pick<WorkoutFistbump, 'user_id'>[]
+}
+
 export type FriendshipStatus = 'pending' | 'accepted'
 
 export type Friendship = {

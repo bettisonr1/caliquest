@@ -1,7 +1,8 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useTransition } from 'react'
-import { Flame, UserMinus, Zap } from 'lucide-react'
+import { ChevronRight, Flame, UserMinus, Zap } from 'lucide-react'
 import { removeFriendAction } from '@/app/(app)/friends/actions'
 import { Avatar } from '@/components/profile/Avatar'
 import { levelProgress } from '@/lib/xp'
@@ -34,9 +35,12 @@ export function FriendsList({ friends }: { friends: FriendListEntry[] }) {
         <ul className="space-y-3">
           {friends.map(({ friendship, profile }) => (
             <li key={friendship.id} className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
+              <Link
+                href={`/profile/${profile.user_id}`}
+                className="flex items-center gap-2.5 min-w-0 flex-1 py-1 -my-1 rounded-lg hover:bg-gray-800/60 transition-colors"
+              >
                 <Avatar avatarUrl={profile.avatar_url} size="sm" />
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="text-sm text-white font-medium truncate">{profile.username}</p>
                   <p className="text-xs text-gray-500 flex items-center gap-2.5">
                     <span className="flex items-center gap-1">
@@ -51,7 +55,8 @@ export function FriendsList({ friends }: { friends: FriendListEntry[] }) {
                     )}
                   </p>
                 </div>
-              </div>
+                <ChevronRight className="h-4 w-4 text-gray-600 shrink-0" />
+              </Link>
               <button
                 onClick={() => remove(friendship.id)}
                 disabled={isPending}
