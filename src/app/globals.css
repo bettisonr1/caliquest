@@ -1,1 +1,36 @@
 @import "tailwindcss";
+
+/* ---------------------------------------------------------------
+   Mobile-proofing baseline. The app is used primarily on phones
+   (in the gym), so these defaults guard against the usual mobile
+   browser quirks. See CLAUDE.md → "Mobile-first development".
+   --------------------------------------------------------------- */
+
+html {
+  /* Stop iOS Safari inflating text in landscape. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  /* Keep rubber-band overscroll from flashing white behind the dark UI
+     and from triggering accidental pull-to-refresh mid-workout. */
+  overscroll-behavior-y: none;
+  /* The grey flash on tap reads as jank on the dark theme. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Remove the double-tap-to-zoom delay on interactive elements without
+   disabling pinch-zoom on the page. */
+a, button, input, select, textarea, label {
+  touch-action: manipulation;
+}
+
+/* iOS Safari auto-zooms into any focused field with font-size < 16px.
+   Force 16px on touch devices only, so compact desktop styling keeps
+   working. (This is unlayered CSS, so it wins over Tailwind utilities.) */
+@media (pointer: coarse) {
+  input, select, textarea {
+    font-size: 16px;
+  }
+}

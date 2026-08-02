@@ -56,7 +56,7 @@ export function FriendsList({ friends }: { friends: FriendListEntry[] }) {
                 onClick={() => remove(friendship.id)}
                 disabled={isPending}
                 aria-label={`Remove ${profile.username}`}
-                className="h-7 w-7 flex items-center justify-center rounded-lg text-gray-500 hover:text-red-400 hover:bg-gray-800 disabled:opacity-50 transition-colors shrink-0"
+                className="h-9 w-9 -my-1 flex items-center justify-center rounded-lg text-gray-500 hover:text-red-400 hover:bg-gray-800 disabled:opacity-50 transition-colors shrink-0"
               >
                 <UserMinus className="h-4 w-4" />
               </button>

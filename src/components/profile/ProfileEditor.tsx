@@ -48,7 +48,7 @@ export function ProfileEditor({ username: initialUsername, avatarUrl }: Props) {
     return (
       <button
         onClick={() => setEditing(true)}
-        className="flex items-center gap-1.5 text-xs font-semibold text-gray-400 hover:text-white transition-colors"
+        className="flex items-center gap-1.5 p-2 -m-2 text-xs font-semibold text-gray-400 hover:text-white transition-colors"
       >
         <Pencil className="h-3.5 w-3.5" /> Edit profile
       </button>
@@ -59,7 +59,7 @@ export function ProfileEditor({ username: initialUsername, avatarUrl }: Props) {
     <div className="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-bold text-white uppercase tracking-widest">Edit profile</h2>
-        <button onClick={cancel} className="text-gray-500 hover:text-white transition-colors" aria-label="Cancel editing">
+        <button onClick={cancel} className="p-2.5 -m-2.5 text-gray-500 hover:text-white transition-colors" aria-label="Cancel editing">
           <X className="h-4 w-4" />
         </button>
       </div>
