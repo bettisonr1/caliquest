@@ -196,7 +196,7 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
         <div className="flex flex-wrap gap-1.5 mb-3">
           <button
             onClick={() => setFilter('all')}
-            className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
               filter === 'all' ? 'bg-gray-100 text-gray-900' : 'bg-gray-800 text-gray-400 hover:text-white'
             }`}
           >
@@ -206,7 +206,7 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
             <button
               key={group}
               onClick={() => setFilter(group)}
-              className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
                 filter === group ? chip : 'bg-gray-800 text-gray-400 hover:text-white'
               }`}
             >
@@ -269,7 +269,7 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
                       </span>
                       <button
                         onClick={() => removeEntry(entry.key)}
-                        className="text-gray-600 hover:text-red-400 transition-colors"
+                        className="p-2.5 -m-2.5 text-gray-600 hover:text-red-400 transition-colors"
                         aria-label={`Remove ${entry.exercise.name}`}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -299,7 +299,7 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
                         <button
                           onClick={() => removeSet(entry.key, i)}
                           disabled={entry.sets.length === 1}
-                          className="text-gray-600 hover:text-red-400 disabled:opacity-30 disabled:hover:text-gray-600 transition-colors"
+                          className="p-2.5 -m-2.5 text-gray-600 hover:text-red-400 disabled:opacity-30 disabled:hover:text-gray-600 transition-colors"
                           aria-label={`Remove set ${i + 1}`}
                         >
                           <X className="h-3.5 w-3.5" />
@@ -310,7 +310,7 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
 
                   <button
                     onClick={() => addSet(entry.key)}
-                    className="mt-3 flex items-center gap-1 text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
+                    className="mt-3 flex items-center gap-1 py-2 -my-2 pr-2 text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
                   >
                     <Plus className="h-3.5 w-3.5" /> Add set
                   </button>

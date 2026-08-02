@@ -52,7 +52,7 @@
 
 ### Week 11–12: Polish & Ship
 - [ ] Shareable workout summary card
-- [ ] Mobile-friendly UI pass (used in the gym on a phone browser)
+- [x] Mobile-friendly UI pass (used in the gym on a phone browser)
 - [ ] Invite friends flow
 - [ ] Final deploy, share URL with friends
 

@@ -23,10 +23,11 @@ export function SkillsTree({ skills, mgXp }: Props) {
       .sort((a, b) => a.sort_order - b.sort_order)
 
   return (
-    <div className="overflow-x-auto pb-4">
+    // Bleed to the screen edges on mobile so the horizontal scroll uses full width
+    <div className="overflow-x-auto pb-4 -mx-4 px-4 md:mx-0 md:px-0 snap-x">
       <div className="flex gap-4 min-w-max">
         {columns.map(({ group, label, color }) => (
-          <div key={group} className="w-56 shrink-0">
+          <div key={group} className="w-56 shrink-0 snap-start scroll-mx-4">
             {/* Column header */}
             <div className="mb-4 pb-2 border-b border-gray-800">
               <h2 className={`text-sm font-bold uppercase tracking-widest ${color}`}>

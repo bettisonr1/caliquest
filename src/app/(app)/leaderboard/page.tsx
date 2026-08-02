@@ -1,8 +1,8 @@
 export default function LeaderboardPage() {
   return (
-    <main className="p-8">
-      <h1 className="text-2xl font-bold">Leaderboard</h1>
-      <p className="text-gray-500 mt-2">Friends ranked by XP and prestige tier.</p>
-    </main>
+    <div>
+      <h1 className="text-2xl font-bold text-white">Leaderboard</h1>
+      <p className="text-gray-400 text-sm mt-1">Friends ranked by XP and prestige tier.</p>
+    </div>
   )
 }

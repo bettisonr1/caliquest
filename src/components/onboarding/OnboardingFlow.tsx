@@ -170,7 +170,7 @@ export function OnboardingFlow({ skills, prerequisites, username }: Props) {
         </p>
       )}
 
-      <div className="fixed bottom-0 left-0 right-0 border-t border-gray-800 bg-gray-950/95 backdrop-blur">
+      <div className="fixed bottom-0 left-0 right-0 border-t border-gray-800 bg-gray-950/95 backdrop-blur pb-[env(safe-area-inset-bottom)]">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
           {step > 0 && (
             <button

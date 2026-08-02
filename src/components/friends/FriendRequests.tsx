@@ -48,7 +48,7 @@ export function FriendRequests({ incoming, outgoing }: Props) {
                   onClick={() => respond(friendship.id, true)}
                   disabled={isPending}
                   aria-label={`Accept ${profile.username}`}
-                  className="h-7 w-7 flex items-center justify-center rounded-lg bg-emerald-500 text-gray-950 hover:bg-emerald-400 disabled:opacity-50 transition-colors"
+                  className="h-9 w-9 -my-1 flex items-center justify-center rounded-lg bg-emerald-500 text-gray-950 hover:bg-emerald-400 disabled:opacity-50 transition-colors"
                 >
                   <Check className="h-4 w-4" />
                 </button>
@@ -56,7 +56,7 @@ export function FriendRequests({ incoming, outgoing }: Props) {
                   onClick={() => respond(friendship.id, false)}
                   disabled={isPending}
                   aria-label={`Decline ${profile.username}`}
-                  className="h-7 w-7 flex items-center justify-center rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-50 transition-colors"
+                  className="h-9 w-9 -my-1 flex items-center justify-center rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-50 transition-colors"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -79,7 +79,7 @@ export function FriendRequests({ incoming, outgoing }: Props) {
                 <button
                   onClick={() => cancel(friendship.id)}
                   disabled={isPending}
-                  className="text-xs text-gray-500 hover:text-white disabled:opacity-50 transition-colors shrink-0"
+                  className="p-2 -m-2 text-xs text-gray-500 hover:text-white disabled:opacity-50 transition-colors shrink-0"
                 >
                   Cancel
                 </button>
