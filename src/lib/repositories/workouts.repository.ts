@@ -4,7 +4,7 @@ import type { Workout, WorkoutSet, WorkoutWithBumps } from '@/types/database'
 export async function createWorkout(
   supabase: SupabaseClient,
   userId: string,
-  options?: { totalXp?: number; notes?: string | null }
+  options?: { totalXp?: number; notes?: string | null; gymId?: string | null }
 ) {
   const now = new Date().toISOString()
   const { data, error } = await supabase
@@ -15,6 +15,7 @@ export async function createWorkout(
       completed_at: now,
       total_xp: options?.totalXp ?? 0,
       notes: options?.notes ?? null,
+      gym_id: options?.gymId ?? null,
     })
     .select()
     .single()
@@ -86,6 +87,8 @@ export async function deleteFistbump(supabase: SupabaseClient, workoutId: string
     .eq('workout_id', workoutId)
     .eq('user_id', userId)
   if (error) throw error
+}
+
 // Recent workouts with per-set XP and muscle group, for sizing quest targets
 // from actual training volume.
 export type WorkoutVolumeRow = {

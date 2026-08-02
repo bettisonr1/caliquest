@@ -357,3 +357,238 @@ $$;
 
 revoke all on function public.search_profiles_by_username(text) from public;
 grant execute on function public.search_profiles_by_username(text) to authenticated;
+
+-- ============================================================
+-- Gym Finder
+-- Phase 1: gyms + PostGIS + nearest-gyms RPC
+-- Phase 2: gym_reviews, auto-verification
+-- Phase 3: workouts.gym_id, gym leaderboard RPC
+-- ============================================================
+create extension if not exists postgis;
+
+create table if not exists public.gyms (
+  id          uuid primary key default gen_random_uuid(),
+  name        text,
+  location    geography(point, 4326) not null,
+  source      text not null default 'user' check (source in ('osm','user')),
+  osm_id      bigint unique,             -- null for user-submitted
+  equipment   jsonb not null default '{}'::jsonb,
+  status      text not null default 'unverified' check (status in ('unverified','verified')),
+  created_by  uuid references public.profiles(user_id) on delete set null,
+  created_at  timestamptz not null default now()
+);
+create index if not exists gyms_location_idx on public.gyms using gist (location);
+
+create table if not exists public.gym_reviews (
+  gym_id      uuid references public.gyms(id) on delete cascade,
+  user_id     uuid references public.profiles(user_id) on delete cascade,
+  rating      integer not null check (rating between 1 and 5),
+  comment     text,
+  created_at  timestamptz not null default now(),
+  primary key (gym_id, user_id)          -- one review per user per gym; edits replace
+);
+
+-- Phase 3: workouts can be tagged to the gym they were trained at.
+alter table public.workouts add column if not exists gym_id uuid references public.gyms(id);
+create index if not exists workouts_gym_idx on public.workouts (gym_id) where gym_id is not null;
+
+-- ------------------------------------------------------------
+-- Nearest-gyms RPC: runs as invoker so gyms' own select RLS
+-- applies; distance/coords are computed here so the client never
+-- parses PostGIS geography types.
+-- ------------------------------------------------------------
+create or replace function public.gyms_near(
+  lat double precision,
+  lng double precision,
+  radius_m integer default 25000,
+  max_results integer default 50
+)
+returns table (
+  id          uuid,
+  name        text,
+  lat         double precision,
+  lng         double precision,
+  distance_m  double precision,
+  status      text,
+  equipment   jsonb
+)
+language sql
+stable
+as $$
+  select
+    g.id,
+    g.name,
+    st_y(g.location::geometry) as lat,
+    st_x(g.location::geometry) as lng,
+    st_distance(g.location, st_makepoint(lng, lat)::geography) as distance_m,
+    g.status,
+    g.equipment
+  from public.gyms g
+  where st_dwithin(g.location, st_makepoint(lng, lat)::geography, radius_m)
+  order by distance_m
+  limit max_results;
+$$;
+
+revoke all on function public.gyms_near(double precision, double precision, integer, integer) from public;
+grant execute on function public.gyms_near(double precision, double precision, integer, integer) to authenticated;
+
+-- Name search (manual browse / geolocation-denied fallback) — same output
+-- shape as gyms_near minus distance, so the client never parses geography.
+create or replace function public.gyms_search_by_name(query text, max_results integer default 20)
+returns table (
+  id        uuid,
+  name      text,
+  lat       double precision,
+  lng       double precision,
+  status    text,
+  equipment jsonb
+)
+language sql
+stable
+as $$
+  select
+    g.id,
+    g.name,
+    st_y(g.location::geometry) as lat,
+    st_x(g.location::geometry) as lng,
+    g.status,
+    g.equipment
+  from public.gyms g
+  where g.name ilike '%' || query || '%'
+  order by g.name
+  limit max_results;
+$$;
+
+revoke all on function public.gyms_search_by_name(text, integer) from public;
+grant execute on function public.gyms_search_by_name(text, integer) to authenticated;
+
+-- A single gym's coordinates (for the detail page's Directions link) —
+-- location is a PostGIS geography and isn't otherwise scalar-readable.
+create or replace function public.gym_coordinates(target_gym_id uuid)
+returns table (lat double precision, lng double precision)
+language sql
+stable
+as $$
+  select st_y(location::geometry) as lat, st_x(location::geometry) as lng
+  from public.gyms
+  where id = target_gym_id;
+$$;
+
+revoke all on function public.gym_coordinates(uuid) from public;
+grant execute on function public.gym_coordinates(uuid) to authenticated;
+
+-- ------------------------------------------------------------
+-- Auto-verification: promote a gym from 'unverified' to 'verified'
+-- once at least 2 users other than its creator have logged a
+-- workout or review there. Security definer so it can update the
+-- gyms row regardless of who triggers it (gyms has no user update
+-- policy in v1) and read workouts across users for the count.
+-- ------------------------------------------------------------
+create or replace function public.maybe_verify_gym() returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target_gym_id uuid := new.gym_id;
+  gym_creator   uuid;
+  other_users   integer;
+begin
+  if target_gym_id is null then
+    return new;
+  end if;
+
+  select created_by into gym_creator from public.gyms where id = target_gym_id;
+
+  select count(distinct activity.user_id) into other_users
+  from (
+    select user_id from public.gym_reviews where gym_id = target_gym_id
+    union
+    select user_id from public.workouts where gym_id = target_gym_id and completed_at is not null
+  ) activity
+  where gym_creator is null or activity.user_id <> gym_creator;
+
+  if other_users >= 2 then
+    update public.gyms set status = 'verified' where id = target_gym_id and status = 'unverified';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists gym_reviews_verify on public.gym_reviews;
+create trigger gym_reviews_verify
+  after insert on public.gym_reviews
+  for each row execute procedure public.maybe_verify_gym();
+
+drop trigger if exists workouts_gym_verify on public.workouts;
+create trigger workouts_gym_verify
+  after insert or update of gym_id, completed_at on public.workouts
+  for each row when (new.gym_id is not null)
+  execute procedure public.maybe_verify_gym();
+
+-- ------------------------------------------------------------
+-- Gym leaderboard RPC: per-gym workout counts by user. Security
+-- definer because workouts' own RLS only exposes a row to its
+-- owner or accepted friends — a gym leaderboard needs counts
+-- across strangers too, so this returns only the aggregate.
+-- ------------------------------------------------------------
+create or replace function public.gym_leaderboard(target_gym_id uuid, max_results integer default 20)
+returns table (user_id uuid, workout_count bigint)
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select user_id, count(*)::bigint as workout_count
+  from public.workouts
+  where gym_id = target_gym_id
+    and completed_at is not null
+  group by user_id
+  order by workout_count desc, user_id
+  limit max_results;
+$$;
+
+revoke all on function public.gym_leaderboard(uuid, integer) from public;
+grant execute on function public.gym_leaderboard(uuid, integer) to authenticated;
+
+-- ------------------------------------------------------------
+-- Public usernames for gym reviews & leaderboards (strangers'
+-- profiles aren't otherwise visible — see "profiles" policy above).
+-- ------------------------------------------------------------
+create or replace function public.get_public_profiles(ids uuid[])
+returns table (user_id uuid, username text, avatar_url text)
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select user_id, username, avatar_url
+  from public.profiles
+  where user_id = any(ids);
+$$;
+
+revoke all on function public.get_public_profiles(uuid[]) from public;
+grant execute on function public.get_public_profiles(uuid[]) to authenticated;
+
+-- ============================================================
+-- Gym Finder RLS
+-- ============================================================
+alter table public.gyms        enable row level security;
+alter table public.gym_reviews enable row level security;
+
+create policy "Gyms readable by authenticated users" on public.gyms
+  for select using (auth.role() = 'authenticated');
+create policy "Users can add gyms" on public.gyms
+  for insert with check (auth.uid() = created_by);
+-- No update/delete policy in v1 — avoids vandalism; auto-verification
+-- above updates status via a security definer trigger, not user writes.
+
+create policy "Gym reviews readable by authenticated users" on public.gym_reviews
+  for select using (auth.role() = 'authenticated');
+create policy "Users can add own gym review" on public.gym_reviews
+  for insert with check (auth.uid() = user_id);
+create policy "Users can update own gym review" on public.gym_reviews
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users can delete own gym review" on public.gym_reviews
+  for delete using (auth.uid() = user_id);

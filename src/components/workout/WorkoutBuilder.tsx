@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import { Clock, Dumbbell, Plus, Repeat, Trash2, X, Zap } from 'lucide-react'
 import { saveWorkoutAction } from '@/app/(app)/workout/actions'
 import { VoiceLogButton } from './VoiceLogButton'
+import { GymTagChip } from '@/components/gyms/GymTagChip'
 import { xpForSet } from '@/lib/xp'
 import type { Exercise, MuscleGroup } from '@/types/database'
 
@@ -38,6 +39,7 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
   const [filter, setFilter] = useState<MuscleGroup | 'all'>('all')
   const [notes, setNotes] = useState('')
   const [unmatched, setUnmatched] = useState<string[]>([])
+  const [gymId, setGymId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<{
     xpEarned: number
@@ -123,7 +125,8 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
               : { reps: null, duration_seconds: v }
           }),
         })),
-        notes
+        notes,
+        gymId
       )
       if (result.ok === false) {
         setError(result.error)
@@ -143,6 +146,7 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
         })
         setEntries([])
         setNotes('')
+        setGymId(null)
       }
     })
   }
@@ -328,7 +332,9 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
             })}
 
             <div className="rounded-2xl border border-gray-800 bg-gray-900 p-4">
-              <label htmlFor="workout-notes" className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">
+              <GymTagChip onSelect={setGymId} />
+
+              <label htmlFor="workout-notes" className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mt-3 mb-2">
                 Notes
               </label>
               <textarea

@@ -1,11 +1,12 @@
 import Link from 'next/link'
-import { Dumbbell, LayoutDashboard, Map, ScrollText, Trophy, User, Users } from 'lucide-react'
+import { Dumbbell, LayoutDashboard, Map, MapPin, ScrollText, Trophy, User, Users } from 'lucide-react'
 import { LogoutButton } from '@/components/auth/LogoutButton'
 
 const navItems = [
   { href: '/dashboard',   label: 'Dashboard',   shortLabel: 'Home',    icon: LayoutDashboard },
   { href: '/workout',     label: 'Workout',     shortLabel: 'Workout', icon: Dumbbell        },
   { href: '/skills',      label: 'Skills',      shortLabel: 'Skills',  icon: Map             },
+  { href: '/gyms',        label: 'Gyms',        shortLabel: 'Gyms',    icon: MapPin          },
   { href: '/friends',     label: 'Friends',     shortLabel: 'Friends', icon: Users           },
   { href: '/quests',      label: 'Quests',      shortLabel: 'Quests',  icon: ScrollText      },
   { href: '/leaderboard', label: 'Leaderboard', shortLabel: 'Ranks',   icon: Trophy          },
