@@ -43,6 +43,8 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
     xpEarned: number
     newLevel: number
     leveledUp: boolean
+    questBonusXp: number
+    completedQuestTitles: string[]
     workedGroups: MuscleGroup[]
   } | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -135,6 +137,8 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
           xpEarned: result.xpEarned,
           newLevel: result.newLevel,
           leveledUp: result.leveledUp,
+          questBonusXp: result.questBonusXp,
+          completedQuestTitles: result.completedQuestTitles,
           workedGroups: muscleGroups.map(m => m.group).filter(g => workedSet.has(g)),
         })
         setEntries([])
@@ -160,6 +164,11 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
           </div>
         )}
         <p className="mt-2 text-3xl font-bold text-emerald-400">+{saved.xpEarned.toLocaleString()} XP</p>
+        {saved.completedQuestTitles.length > 0 && (
+          <p className="mt-2 text-sm font-semibold text-purple-300">
+            Quest complete: {saved.completedQuestTitles.join(', ')}! +{saved.questBonusXp.toLocaleString()} bonus XP
+          </p>
+        )}
         {saved.leveledUp && (
           <p className="mt-2 text-sm font-semibold text-yellow-400">
             Level up! You reached level {saved.newLevel}.

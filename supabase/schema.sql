@@ -125,6 +125,21 @@ create table if not exists public.workout_fistbumps (
   created_at  timestamptz not null default now(),
   primary key (workout_id, user_id)
 );
+-- Migration: dynamic per-user quests with an AI guru.
+-- A quest row with user_id set is generated for that user (targeting their
+-- weakest muscle group); user_id null is reserved for static/global quests.
+-- target_count is measured in base XP earned in the target muscle group while
+-- the quest is active; xp_reward is the completion bonus (0.5 × target, so
+-- qualifying work effectively pays 1.5× — but only if the quest completes).
+alter table public.quests add column if not exists user_id       uuid references public.profiles(user_id) on delete cascade;
+alter table public.quests add column if not exists guru_name     text;
+alter table public.quests add column if not exists guru_persona  text;
+alter table public.quests add column if not exists guru_greeting text;
+
+alter table public.user_quests add column if not exists expires_at timestamptz;
+alter table public.user_quests add column if not exists bonus_xp   integer not null default 0;
+alter table public.user_quests add column if not exists status     text not null default 'active'
+  check (status in ('active','completed','expired'));
 
 -- Friend connections (request/accept model)
 create table if not exists public.friendships (
@@ -301,7 +316,15 @@ create policy "Users can update own quests" on public.user_quests for update usi
 create policy "Skills readable by authenticated users"             on public.skills             for select using (auth.role() = 'authenticated');
 create policy "Prerequisites readable by authenticated users"      on public.skill_prerequisites for select using (auth.role() = 'authenticated');
 create policy "Exercises readable by authenticated users"          on public.exercises          for select using (auth.role() = 'authenticated');
-create policy "Quests readable by authenticated users"             on public.quests             for select using (auth.role() = 'authenticated');
+-- Quests: global quests (user_id null) are readable by everyone; generated
+-- quests only by their owner, who can also create and update (decline) them.
+drop policy if exists "Quests readable by authenticated users" on public.quests;
+create policy "Quests readable by owner or global" on public.quests
+  for select using (auth.role() = 'authenticated' and (user_id is null or user_id = auth.uid()));
+create policy "Users can insert own quests" on public.quests
+  for insert with check (auth.uid() = user_id);
+create policy "Users can update own quests" on public.quests
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- friendships
 create policy "Users can view their own friendships" on public.friendships

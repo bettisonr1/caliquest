@@ -64,6 +64,20 @@ export async function claimOnboarding(
   return (data ?? []).length > 0
 }
 
+// Award XP outside a workout save (e.g. a quest completion bonus) without
+// touching streak/last-workout fields.
+export async function updateProfileXP(
+  supabase: SupabaseClient,
+  userId: string,
+  fields: { total_xp: number; level: number }
+) {
+  const { error } = await supabase
+    .from('profiles')
+    .update(fields)
+    .eq('user_id', userId)
+  if (error) throw error
+}
+
 export async function updateProfileAfterWorkout(
   supabase: SupabaseClient,
   userId: string,

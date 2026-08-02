@@ -86,6 +86,25 @@ export async function deleteFistbump(supabase: SupabaseClient, workoutId: string
     .eq('workout_id', workoutId)
     .eq('user_id', userId)
   if (error) throw error
+// Recent workouts with per-set XP and muscle group, for sizing quest targets
+// from actual training volume.
+export type WorkoutVolumeRow = {
+  id: string
+  started_at: string
+  workout_sets: Array<{
+    xp_earned: number
+    exercises: { muscle_group: string } | null
+  }>
+}
+
+export async function getWorkoutsSince(supabase: SupabaseClient, userId: string, sinceISO: string) {
+  const { data, error } = await supabase
+    .from('workouts')
+    .select('id, started_at, workout_sets(xp_earned, exercises(muscle_group))')
+    .eq('user_id', userId)
+    .gte('started_at', sinceISO)
+  if (error) throw error
+  return (data ?? []) as unknown as WorkoutVolumeRow[]
 }
 
 export async function createWorkoutSets(

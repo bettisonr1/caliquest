@@ -88,6 +88,40 @@ export type WorkoutFistbump = {
 
 export type WorkoutWithBumps = WorkoutWithSets & {
   workout_fistbumps: Pick<WorkoutFistbump, 'user_id'>[]
+// target_count is base XP to earn in target_muscle_group within duration_days;
+// xp_reward is the completion bonus (0.5 × target → 1.5× total on completion).
+export type Quest = {
+  id:                  string
+  title:               string
+  description:         string | null
+  target_exercise_id:  string | null
+  target_muscle_group: MuscleGroup | null
+  target_count:        number
+  xp_reward:           number
+  duration_days:       number
+  is_active:           boolean
+  user_id:             string | null
+  guru_name:           string | null
+  guru_persona:        string | null
+  guru_greeting:       string | null
+}
+
+export type UserQuestStatus = 'active' | 'completed' | 'expired'
+
+export type UserQuest = {
+  id:           string
+  user_id:      string
+  quest_id:     string
+  progress:     number
+  started_at:   string
+  completed_at: string | null
+  expires_at:   string | null
+  bonus_xp:     number
+  status:       UserQuestStatus
+}
+
+export type UserQuestWithQuest = UserQuest & {
+  quests: Quest
 }
 
 export type FriendshipStatus = 'pending' | 'accepted'

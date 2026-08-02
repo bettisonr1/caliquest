@@ -8,6 +8,7 @@ import {
   updateMuscleGroupXP,
   updateProfileAfterWorkout,
 } from '@/lib/repositories/profiles.repository'
+import { applyWorkoutToQuests } from '@/lib/services/quests.service'
 import { nextStreak, xpForSet, xpToLevel } from '@/lib/xp'
 import type { Exercise, MuscleGroup, Skill } from '@/types/database'
 
@@ -89,6 +90,8 @@ export type SaveWorkoutOutcome = {
   xpEarned: number
   newLevel: number
   leveledUp: boolean
+  questBonusXp: number
+  completedQuestTitles: string[]
 }
 
 const MAX_REPS = 1000
@@ -174,5 +177,14 @@ export async function saveWorkout(
     last_workout_at: workout.completed_at ?? workout.started_at,
   })
 
-  return { xpEarned: totalXp, newLevel, leveledUp: newLevel > profile.level }
+  const quests = await applyWorkoutToQuests(supabase, userId, mgXpGained)
+  const finalLevel = xpToLevel(newTotalXp + quests.bonusXp)
+
+  return {
+    xpEarned: totalXp + quests.bonusXp,
+    newLevel: finalLevel,
+    leveledUp: finalLevel > profile.level,
+    questBonusXp: quests.bonusXp,
+    completedQuestTitles: quests.completedQuestTitles,
+  }
 }

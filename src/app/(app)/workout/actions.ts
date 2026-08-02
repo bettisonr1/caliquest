@@ -27,7 +27,14 @@ export async function logWorkoutAction(input: {
 }
 
 export type SaveWorkoutResult =
-  | { ok: true; xpEarned: number; newLevel: number; leveledUp: boolean }
+  | {
+      ok: true
+      xpEarned: number
+      newLevel: number
+      leveledUp: boolean
+      questBonusXp: number
+      completedQuestTitles: string[]
+    }
   | { ok: false; error: string }
 
 const saveWorkoutErrorMessages: Record<string, string> = {
@@ -52,6 +59,7 @@ export async function saveWorkoutAction(
     revalidatePath('/profile')
     revalidatePath('/skills')
     revalidatePath('/workout')
+    revalidatePath('/quests')
 
     return { ok: true, ...outcome }
   } catch (e) {
