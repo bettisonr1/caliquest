@@ -1,9 +1,12 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { CheckCircle, Dumbbell, Flame, Zap } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { levelProgress } from '@/lib/xp'
+import { getRecentCompletedWorkouts } from '@/lib/repositories/workouts.repository'
 import { Avatar } from '@/components/profile/Avatar'
 import { ProfileEditor } from '@/components/profile/ProfileEditor'
+import { WorkoutHistory } from '@/components/workout/WorkoutHistory'
 import type { MuscleGroup, Profile } from '@/types/database'
 
 const muscleGroups: { group: MuscleGroup; label: string; bar: string; text: string }[] = [
@@ -24,11 +27,13 @@ export default async function ProfilePage() {
     { data: mgXpRows },
     { count: workoutCount },
     { count: unlockedCount },
+    recentWorkouts,
   ] = await Promise.all([
     supabase.from('profiles').select('*').eq('user_id', user.id).single(),
     supabase.from('muscle_group_xp').select('*').eq('user_id', user.id),
     supabase.from('workouts').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
     supabase.from('user_skills').select('skill_id', { count: 'exact', head: true }).eq('user_id', user.id),
+    getRecentCompletedWorkouts(supabase, user.id),
   ])
 
   const profile = profileRow as Profile | null
@@ -119,6 +124,23 @@ export default async function ProfilePage() {
           })}
         </div>
       </div>
+
+      {/* Workout history (fist-bump counts come from friends viewing this profile) */}
+      <WorkoutHistory
+        workouts={recentWorkouts}
+        viewerId={user.id}
+        canBump={false}
+        emptyMessage="No workouts yet — log one from the Workout tab to start your history."
+      />
+
+      {recentWorkouts.length > 0 && (
+        <p className="text-sm text-gray-500">
+          Ready for the next one?{' '}
+          <Link href="/workout" className="text-emerald-400 font-medium hover:text-emerald-300">
+            Log a workout →
+          </Link>
+        </p>
+      )}
     </div>
   )
 }

@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { AVATAR_BACKGROUNDS, AVATAR_EMOJIS, serializeAvatar } from '@/lib/avatar'
+import { toggleFistBump } from '@/lib/services/profile.service'
 import type { AvatarBackground } from '@/lib/avatar'
 
 export type UpdateProfileResult =
@@ -53,4 +54,26 @@ export async function updateProfile(input: {
   revalidatePath('/dashboard')
   revalidatePath('/leaderboard')
   return { ok: true }
+}
+
+const fistBumpErrors: Record<string, string> = {
+  NOT_FOUND: 'That workout is no longer available.',
+  CANNOT_BUMP_OWN_WORKOUT: "You can't fist-bump your own workout.",
+}
+
+export async function toggleFistBumpAction(
+  workoutId: string
+): Promise<{ ok: true; bumped: boolean } | { ok: false; error: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: 'Not signed in.' }
+
+  try {
+    const { bumped, workoutOwnerId } = await toggleFistBump(user.id, workoutId)
+    revalidatePath(`/profile/${workoutOwnerId}`)
+    return { ok: true, bumped }
+  } catch (e) {
+    const code = e instanceof Error ? e.message : 'UNKNOWN_ERROR'
+    return { ok: false, error: fistBumpErrors[code] ?? 'Something went wrong. Please try again.' }
+  }
 }

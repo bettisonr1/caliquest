@@ -1,12 +1,10 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { Dumbbell, Flame, Zap } from 'lucide-react'
+import { Dumbbell, Flame, History, Zap } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { levelProgress } from '@/lib/xp'
 import {
   computeWeekStats,
-  LatestWorkoutCard,
-  RecentWorkouts,
   SevenDaySummary,
   sevenDaysAgoIso,
 } from '@/components/dashboard/WorkoutCards'
@@ -18,27 +16,23 @@ export default async function DashboardPage() {
   if (!user) redirect('/login')
 
   const weekAgo = sevenDaysAgoIso()
-  const [{ data: profileRow }, { data: workoutRows }, { data: weekRows }] = await Promise.all([
+  const [{ data: profileRow }, { data: weekRows }, { count: workoutCount }] = await Promise.all([
     supabase.from('profiles').select('*').eq('user_id', user.id).single(),
-    supabase
-      .from('workouts')
-      .select('*, workout_sets(*, exercises(*))')
-      .eq('user_id', user.id)
-      .not('completed_at', 'is', null)
-      .order('started_at', { ascending: false })
-      .limit(10),
     supabase
       .from('workouts')
       .select('*, workout_sets(id)')
       .eq('user_id', user.id)
       .not('completed_at', 'is', null)
       .gte('started_at', weekAgo),
+    supabase
+      .from('workouts')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .not('completed_at', 'is', null),
   ])
 
   const profile = profileRow as Profile | null
-  const workouts = (workoutRows ?? []) as WorkoutWithSets[]
   const weekWorkouts = (weekRows ?? []) as WorkoutWithSets[]
-  const [latest, ...earlier] = workouts
   const progress = levelProgress(profile?.total_xp ?? 0)
 
   return (
@@ -70,12 +64,22 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      <SevenDaySummary stats={computeWeekStats(weekWorkouts, profile?.streak_days ?? 0)} />
-
-      {latest ? (
+      {(workoutCount ?? 0) > 0 ? (
         <>
-          <LatestWorkoutCard workout={latest} />
-          {earlier.length > 0 && <RecentWorkouts workouts={earlier} />}
+          <SevenDaySummary stats={computeWeekStats(weekWorkouts, profile?.streak_days ?? 0)} />
+          <Link
+            href="/profile"
+            className="flex items-center gap-3 rounded-2xl border border-gray-800 bg-gray-900 p-4 hover:border-gray-700 transition-colors"
+          >
+            <History className="h-5 w-5 text-emerald-400 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-white">Workout history</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Your recent workouts now live on your profile.
+              </p>
+            </div>
+            <span className="text-sm text-emerald-400 font-medium shrink-0">View →</span>
+          </Link>
         </>
       ) : (
         <div className="rounded-2xl border border-dashed border-gray-700 p-12 text-center">

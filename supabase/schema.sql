@@ -117,6 +117,15 @@ create table if not exists public.user_quests (
   completed_at timestamptz
 );
 
+-- Fist-bumps: a friend's one-tap sign of respect on a workout.
+-- One per (workout, friend); deleting the row un-bumps.
+create table if not exists public.workout_fistbumps (
+  workout_id  uuid references public.workouts(id) on delete cascade,
+  user_id     uuid references public.profiles(user_id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  primary key (workout_id, user_id)
+);
+
 -- Friend connections (request/accept model)
 create table if not exists public.friendships (
   id            uuid primary key default gen_random_uuid(),
@@ -179,6 +188,7 @@ alter table public.muscle_group_xp  enable row level security;
 alter table public.user_skills      enable row level security;
 alter table public.workouts         enable row level security;
 alter table public.workout_sets     enable row level security;
+alter table public.workout_fistbumps enable row level security;
 alter table public.user_quests      enable row level security;
 alter table public.friendships      enable row level security;
 alter table public.skills           enable row level security;
@@ -210,18 +220,77 @@ create policy "Users can update own xp" on public.muscle_group_xp for update usi
 create policy "Users can view own skills"   on public.user_skills for select using (auth.uid() = user_id);
 create policy "Users can insert own skills" on public.user_skills for insert with check (auth.uid() = user_id);
 
+-- True when the two users have an accepted friendship in either direction.
+-- security definer so it can be used inside RLS policies on other tables
+-- without being blocked by friendships' own RLS.
+create or replace function public.are_friends(a uuid, b uuid) returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.friendships f
+    where f.status = 'accepted'
+      and ((f.requester_id = a and f.addressee_id = b)
+        or (f.requester_id = b and f.addressee_id = a))
+  );
+$$;
+
+revoke all on function public.are_friends(uuid, uuid) from public;
+grant execute on function public.are_friends(uuid, uuid) to authenticated;
+
 -- workouts
-create policy "Users can view own workouts"   on public.workouts for select using (auth.uid() = user_id);
+-- Readable by the owner and by accepted friends, so a friend's profile can
+-- show their recent workouts. Writes remain owner-only.
+drop policy if exists "Users can view own workouts" on public.workouts;
+drop policy if exists "Users can view own or friends' workouts" on public.workouts;
+create policy "Users can view own or friends' workouts" on public.workouts
+  for select using (
+    auth.uid() = user_id or public.are_friends(auth.uid(), user_id)
+  );
 create policy "Users can insert own workouts" on public.workouts for insert with check (auth.uid() = user_id);
 create policy "Users can update own workouts" on public.workouts for update using (auth.uid() = user_id);
 
--- workout_sets
-create policy "Users can view own sets"   on public.workout_sets for select using (
-  exists (select 1 from public.workouts w where w.id = workout_id and w.user_id = auth.uid())
-);
+-- workout_sets (visibility follows the parent workout)
+drop policy if exists "Users can view own sets" on public.workout_sets;
+drop policy if exists "Users can view sets of visible workouts" on public.workout_sets;
+create policy "Users can view sets of visible workouts" on public.workout_sets
+  for select using (
+    exists (
+      select 1 from public.workouts w
+      where w.id = workout_id
+        and (w.user_id = auth.uid() or public.are_friends(auth.uid(), w.user_id))
+    )
+  );
 create policy "Users can insert own sets" on public.workout_sets for insert with check (
   exists (select 1 from public.workouts w where w.id = workout_id and w.user_id = auth.uid())
 );
+
+-- workout_fistbumps
+-- Anyone who can see a workout can see its fist-bumps; only accepted friends
+-- of the workout's owner can add one (never on their own workout), and a
+-- fist-bump can only be removed by the friend who gave it.
+create policy "Users can view fistbumps on visible workouts" on public.workout_fistbumps
+  for select using (
+    exists (
+      select 1 from public.workouts w
+      where w.id = workout_id
+        and (w.user_id = auth.uid() or public.are_friends(auth.uid(), w.user_id))
+    )
+  );
+create policy "Friends can fistbump a workout" on public.workout_fistbumps
+  for insert with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from public.workouts w
+      where w.id = workout_id
+        and w.user_id <> auth.uid()
+        and public.are_friends(auth.uid(), w.user_id)
+    )
+  );
+create policy "Users can remove their own fistbump" on public.workout_fistbumps
+  for delete using (auth.uid() = user_id);
 
 -- user_quests
 create policy "Users can view own quests"   on public.user_quests for select using (auth.uid() = user_id);

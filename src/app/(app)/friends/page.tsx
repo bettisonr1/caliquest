@@ -17,7 +17,7 @@ export default async function FriendsPage() {
       <div>
         <h1 className="text-2xl font-bold text-white">Friends</h1>
         <p className="text-gray-400 text-sm mt-1">
-          Add friends to see them on the leaderboard.
+          Add friends to view their profiles, fist-bump their workouts, and see them on the leaderboard.
         </p>
       </div>
 
