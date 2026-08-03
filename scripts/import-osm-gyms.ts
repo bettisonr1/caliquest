@@ -18,6 +18,12 @@ import { createClient } from '@supabase/supabase-js'
 
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
 const CLUSTER_RADIUS_M = 75
+// Equipment nodes almost never carry their own name tag, but the park they
+// sit in usually does. Name-match against the nearest named park within this
+// radius of the cluster centroid — a proximity heuristic, not true polygon
+// containment (that'd need way/relation geometry, not just centroids), so
+// it's kept tight to avoid mis-naming a gym after an unrelated nearby park.
+const PARK_MATCH_RADIUS_M = 150
 
 // [south, west, north, east]
 const DEFAULT_BBOX: [number, number, number, number] = [49.9, -8.6, 60.9, 1.8]
@@ -62,25 +68,69 @@ function buildQuery(bbox: [number, number, number, number]): string {
       node["sport"="calisthenics"](${bboxStr});
       way["sport"="calisthenics"](${bboxStr});
       relation["sport"="calisthenics"](${bboxStr});
-      node["sport"="fitness"]["leisure"](${bboxStr});
-      way["sport"="fitness"]["leisure"](${bboxStr});
+      way["leisure"="park"]["name"](${bboxStr});
+      way["leisure"="garden"]["name"](${bboxStr});
+      way["landuse"="recreation_ground"]["name"](${bboxStr});
+      relation["leisure"="park"]["name"](${bboxStr});
+      relation["landuse"="recreation_ground"]["name"](${bboxStr});
     );
     out center tags;
   `
 }
 
+function isFitnessElement(tags: Record<string, string>): boolean {
+  // Deliberately narrow to OSM's two outdoor-specific tags. An earlier,
+  // broader `sport=fitness` + any `leisure` match also pulled in indoor
+  // commercial chains (PureGym, Anytime Fitness — tagged leisure=fitness_centre),
+  // which don't belong in a free-outdoor-park-gym dataset.
+  return tags.leisure === 'fitness_station' || tags.sport === 'calisthenics'
+}
+
+function isNamedParkArea(tags: Record<string, string>): boolean {
+  return Boolean(tags.name) && (tags.leisure === 'park' || tags.leisure === 'garden' || tags.landuse === 'recreation_ground')
+}
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+// The shared public overpass-api.de instance regularly returns 504 ("server
+// too busy") independent of query size or our own rate limit (check
+// https://overpass-api.de/api/status) — Overpass's own usage policy asks
+// clients to back off and retry rather than resubmit immediately.
+const MAX_ATTEMPTS = 5
+const RETRY_STATUS_CODES = new Set([429, 504])
+
 async function fetchOverpassElements(bbox: [number, number, number, number]): Promise<OverpassElement[]> {
   const query = buildQuery(bbox)
-  const res = await fetch(OVERPASS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `data=${encodeURIComponent(query)}`,
-  })
-  if (!res.ok) {
-    throw new Error(`Overpass request failed: ${res.status} ${await res.text()}`)
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const res = await fetch(OVERPASS_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        // overpass-api.de returns 406 for requests with no User-Agent (Node's
+        // fetch sends none by default). Their usage policy also asks for a
+        // descriptive one so operators can identify heavy consumers.
+        'User-Agent': 'CaliQuest-GymImport/1.0 (https://github.com/bettisonr1/caliquest)',
+      },
+      body: `data=${encodeURIComponent(query)}`,
+    })
+    if (res.ok) {
+      const json = (await res.json()) as { elements: OverpassElement[] }
+      return json.elements
+    }
+
+    const body = await res.text()
+    const retryable = RETRY_STATUS_CODES.has(res.status)
+    if (!retryable || attempt === MAX_ATTEMPTS) {
+      throw new Error(`Overpass request failed: ${res.status} ${body}`)
+    }
+
+    const delayMs = 30_000 * 2 ** (attempt - 1) // 30s, 60s, 120s, 240s
+    console.log(`Overpass returned ${res.status} (attempt ${attempt}/${MAX_ATTEMPTS}), retrying in ${delayMs / 1000}s…`)
+    await sleep(delayMs)
   }
-  const json = (await res.json()) as { elements: OverpassElement[] }
-  return json.elements
+
+  throw new Error('unreachable')
 }
 
 function elementCoords(el: OverpassElement): { lat: number; lng: number } | null {
@@ -120,6 +170,39 @@ function distanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: 
   return 2 * R * Math.asin(Math.sqrt(s))
 }
 
+type NamedArea = { name: string; lat: number; lng: number }
+
+function namedParkAreas(elements: OverpassElement[]): NamedArea[] {
+  const areas: NamedArea[] = []
+  for (const el of elements) {
+    const tags = el.tags ?? {}
+    const coords = elementCoords(el)
+    if (coords && isNamedParkArea(tags)) areas.push({ name: tags.name, lat: coords.lat, lng: coords.lng })
+  }
+  return areas
+}
+
+// Fill in clusters that got no name from their own tags with the nearest
+// named park within PARK_MATCH_RADIUS_M, if any.
+function enrichWithParkNames(clusters: Cluster[], parks: NamedArea[]): number {
+  let matched = 0
+  for (const cluster of clusters) {
+    if (cluster.name) continue
+    let nearest: { name: string; distance: number } | null = null
+    for (const park of parks) {
+      const distance = distanceMeters(cluster, park)
+      if (distance <= PARK_MATCH_RADIUS_M && (!nearest || distance < nearest.distance)) {
+        nearest = { name: park.name, distance }
+      }
+    }
+    if (nearest) {
+      cluster.name = `Outdoor gym, ${nearest.name}`
+      matched++
+    }
+  }
+  return matched
+}
+
 // Merge equipment nodes a few meters apart into one gym (a single park gym
 // is often mapped as several fitness_station nodes), unioning equipment tags.
 function clusterElements(elements: OverpassElement[]): Cluster[] {
@@ -157,10 +240,15 @@ async function main() {
 
   console.log(`Querying Overpass for bbox [${bbox.join(', ')}]…`)
   const elements = await fetchOverpassElements(bbox)
-  console.log(`Fetched ${elements.length} OSM elements.`)
+  const fitnessElements = elements.filter(el => isFitnessElement(el.tags ?? {}))
+  const parks = namedParkAreas(elements)
+  console.log(`Fetched ${fitnessElements.length} fitness elements and ${parks.length} named parks.`)
 
-  const clusters = clusterElements(elements)
+  const clusters = clusterElements(fitnessElements)
   console.log(`Clustered into ${clusters.length} gyms (merged within ${CLUSTER_RADIUS_M}m).`)
+
+  const parkMatches = enrichWithParkNames(clusters, parks)
+  console.log(`Named ${parkMatches} otherwise-unnamed gyms after their nearest park (within ${PARK_MATCH_RADIUS_M}m).`)
 
   const rows = clusters.map(c => ({
     name: c.name,

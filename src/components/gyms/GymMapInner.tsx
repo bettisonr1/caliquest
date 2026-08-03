@@ -1,8 +1,17 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { Map as MapLibreMap, Marker, NavigationControl } from 'maplibre-gl'
+import { Map as MapLibreMap, Marker, NavigationControl, setWorkerUrl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
+
+// MapLibre resolves its worker script relative to its own bundled chunk's
+// import.meta.url at runtime, which Turbopack doesn't serve at that path —
+// the map still initializes (background layer, controls, our own marker DOM
+// nodes all render fine) but the worker never loads, so it silently never
+// requests a single vector tile. `scripts/copy-maplibre-worker.mjs` vendors
+// the worker's real files (it has one sibling import of its own) into
+// public/maplibre/ on every `npm install`, and this points there directly.
+setWorkerUrl('/maplibre/maplibre-gl-worker.mjs')
 
 // Free vector tiles, no API key required.
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty'
