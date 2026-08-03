@@ -208,4 +208,59 @@ export type PassportEntry = {
   gym_name:      string | null
   workout_count: number
   rank:          GymRank
+export type Squad = {
+  id:           string
+  name:         string
+  description:  string | null
+  gym_name:     string | null
+  meeting_info: string | null
+  created_by:   string | null
+  created_at:   string
+}
+
+export type SquadRole = 'leader' | 'member'
+export type SquadMemberStatus = 'invited' | 'active'
+
+export type SquadMember = {
+  squad_id:   string
+  user_id:    string
+  role:       SquadRole
+  status:     SquadMemberStatus
+  invited_by: string | null
+  created_at: string
+  joined_at:  string | null
+}
+
+export type SquadMembershipWithSquad = SquadMember & {
+  squads: Squad
+}
+
+export type SquadMemberWithProfile = SquadMember & {
+  profile: Profile
+}
+
+export type SquadPost = {
+  id:              string
+  squad_id:        string
+  author_id:       string
+  content:         string
+  is_announcement: boolean
+  created_at:      string
+}
+
+export type SquadPostWithAuthor = SquadPost & {
+  author: PublicProfile | null
+}
+
+export type NotificationType = 'squad_announcement' | 'squad_invite'
+
+export type Notification = {
+  id:         string
+  user_id:    string
+  type:       NotificationType
+  squad_id:   string | null
+  post_id:    string | null
+  message:    string
+  read_at:    string | null
+  created_at: string
 }

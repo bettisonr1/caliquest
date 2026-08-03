@@ -15,6 +15,18 @@ Gamified calisthenics web app. Next.js (App Router, TypeScript) + Supabase (Post
 - `src/components` — client components, grouped by feature.
 - `supabase/schema.sql` + `seed.sql` — database schema and seed data.
 
+## Logging (required)
+
+Use the shared pino logger (`src/lib/logger.ts`) — never `console.log`. Any new server action or service function that mutates data, calls an external API, or matters for debugging/support must log:
+
+1. **Scope a child logger** at the top: `logger.child({ userId, feature: '<feature-name>', ...relevantIds })` (e.g. `squadId`).
+2. **`.info(...)` on success** — the ids/counts that matter, e.g. `log.info({ squadId }, 'Squad created')`.
+3. **`.warn(...)` for expected/handled failures** — validation errors, permission checks, business-rule rejections (e.g. `NOT_LEADER`, `ALREADY_IN_SQUAD`).
+4. **`.error({ err }, ...)` for unexpected failures** — thrown errors, failed external calls. Pass the error under the `err` key so pino's error serializer formats it (`serializers: { err: pino.stdSerializers.err }` in `logger.ts`).
+5. **Never log full user-authored content** (post text, chat messages, etc.) — log length or other metadata instead.
+
+Reference implementations: `src/app/(app)/squads/actions.ts` (action-layer logging with a shared `logActionOutcome` helper), `src/lib/services/guru.service.ts` and `src/lib/services/quest-generation.service.ts` (service-layer logging around LLM calls).
+
 ## Mobile-first development (required)
 
 CaliQuest is used primarily **on a phone, in the gym**. Every UI change must be designed for mobile first and verified at a 375px-wide viewport before considering desktop. Concretely:

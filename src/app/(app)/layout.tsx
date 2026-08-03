@@ -1,6 +1,9 @@
 import Link from 'next/link'
-import { Dumbbell, LayoutDashboard, Map, MapPin, ScrollText, Trophy, User, Users } from 'lucide-react'
+import { Dumbbell, LayoutDashboard, Map, MapPin, ScrollText, Shield, Trophy, User, Users } from 'lucide-react'
 import { LogoutButton } from '@/components/auth/LogoutButton'
+import { NotificationBell } from '@/components/notifications/NotificationBell'
+import { createClient } from '@/lib/supabase/server'
+import { getUnreadCount } from '@/lib/services/notifications.service'
 
 const navItems = [
   { href: '/dashboard',   label: 'Dashboard',   shortLabel: 'Home',    icon: LayoutDashboard },
@@ -8,12 +11,17 @@ const navItems = [
   { href: '/skills',      label: 'Skills',      shortLabel: 'Skills',  icon: Map             },
   { href: '/gyms',        label: 'Gyms',        shortLabel: 'Gyms',    icon: MapPin          },
   { href: '/friends',     label: 'Friends',     shortLabel: 'Friends', icon: Users           },
+  { href: '/squads',      label: 'Squads',      shortLabel: 'Squads',  icon: Shield          },
   { href: '/quests',      label: 'Quests',      shortLabel: 'Quests',  icon: ScrollText      },
   { href: '/leaderboard', label: 'Leaderboard', shortLabel: 'Ranks',   icon: Trophy          },
   { href: '/profile',     label: 'Profile',     shortLabel: 'Profile', icon: User            },
 ]
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  const unreadCount = user ? await getUnreadCount(user.id) : 0
+
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
       <header className="border-b border-gray-800 bg-gray-950 sticky top-0 z-20 pt-[env(safe-area-inset-top)]">
@@ -32,10 +40,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 {label}
               </Link>
             ))}
+            <NotificationBell initialUnreadCount={unreadCount} />
             <LogoutButton />
           </nav>
-          {/* The bottom nav has no room for logout, so surface it here on mobile */}
-          <div className="md:hidden">
+          {/* The bottom nav has no room for logout/bell, so surface them here on mobile */}
+          <div className="md:hidden flex items-center gap-1">
+            <NotificationBell initialUnreadCount={unreadCount} />
             <LogoutButton iconOnly />
           </div>
         </div>
