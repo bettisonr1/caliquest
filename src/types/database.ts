@@ -203,11 +203,22 @@ export type GymLeaderboardEntry = {
   profile:       PublicProfile | null
 }
 
+export type LeaderboardPeriod = 'week' | 'month'
+
+export type FriendLeaderboardEntry = {
+  user_id:       string
+  workout_count: number
+  profile:       PublicProfile
+  isViewer:      boolean
+}
+
 export type PassportEntry = {
   gym_id:        string
   gym_name:      string | null
   workout_count: number
   rank:          GymRank
+}
+
 export type Squad = {
   id:           string
   name:         string

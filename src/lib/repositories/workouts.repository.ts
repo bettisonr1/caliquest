@@ -41,6 +41,30 @@ export async function getRecentCompletedWorkouts(
   return (data ?? []) as WorkoutWithBumps[]
 }
 
+// Per-user completed-workout counts since a given timestamp, for the friends
+// leaderboard. Relies on the workouts RLS policy (own + accepted friends) —
+// callers must only pass ids the viewer is actually allowed to see.
+export async function getCompletedWorkoutCountsSince(
+  supabase: SupabaseClient,
+  userIds: string[],
+  sinceIso: string
+) {
+  if (userIds.length === 0) return new Map<string, number>()
+  const { data, error } = await supabase
+    .from('workouts')
+    .select('user_id')
+    .in('user_id', userIds)
+    .not('completed_at', 'is', null)
+    .gte('completed_at', sinceIso)
+  if (error) throw error
+
+  const counts = new Map<string, number>()
+  for (const row of (data ?? []) as { user_id: string }[]) {
+    counts.set(row.user_id, (counts.get(row.user_id) ?? 0) + 1)
+  }
+  return counts
+}
+
 export async function countCompletedWorkouts(supabase: SupabaseClient, userId: string) {
   const { count, error } = await supabase
     .from('workouts')

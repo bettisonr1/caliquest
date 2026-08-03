@@ -11,7 +11,8 @@ import {
   searchProfilesByUsername,
 } from '@/lib/repositories/friendships.repository'
 import { getProfilesByUserIds } from '@/lib/repositories/profiles.repository'
-import type { Friendship, Profile, PublicProfile } from '@/types/database'
+import { getCompletedWorkoutCountsSince } from '@/lib/repositories/workouts.repository'
+import type { Friendship, FriendLeaderboardEntry, LeaderboardPeriod, Profile, PublicProfile } from '@/types/database'
 
 export type FriendListEntry = { friendship: Friendship; profile: Profile }
 
@@ -87,6 +88,49 @@ export async function respondToFriendRequest(userId: string, friendshipId: strin
   } else {
     await deleteFriendship(supabase, friendshipId)
   }
+}
+
+function leaderboardWindowStart(period: LeaderboardPeriod): string {
+  const start = new Date()
+  if (period === 'week') start.setDate(start.getDate() - 7)
+  else start.setMonth(start.getMonth() - 1)
+  return start.toISOString()
+}
+
+// Friends leaderboard: viewer + accepted friends, ranked by completed
+// workouts within the given window. Workout counts come straight from the
+// workouts table rather than a security-definer RPC — its own RLS policy
+// already exposes the viewer's and their friends' rows.
+export async function getFriendsLeaderboard(
+  userId: string,
+  period: LeaderboardPeriod
+): Promise<FriendLeaderboardEntry[]> {
+  const supabase = await createClient()
+
+  const accepted = await getAcceptedFriendships(supabase, userId)
+  const friendIds = accepted.map(f => otherUserId(f, userId))
+  const memberIds = [...new Set([userId, ...friendIds])]
+
+  const since = leaderboardWindowStart(period)
+  const [counts, profiles] = await Promise.all([
+    getCompletedWorkoutCountsSince(supabase, memberIds, since),
+    getProfilesByUserIds(supabase, memberIds),
+  ])
+  const profileById = new Map(profiles.map(p => [p.user_id, p]))
+
+  return memberIds
+    .map((id): FriendLeaderboardEntry | null => {
+      const profile = profileById.get(id)
+      if (!profile) return null
+      return {
+        user_id: id,
+        workout_count: counts.get(id) ?? 0,
+        profile,
+        isViewer: id === userId,
+      }
+    })
+    .filter((entry): entry is FriendLeaderboardEntry => entry !== null)
+    .sort((a, b) => b.workout_count - a.workout_count || a.profile.username.localeCompare(b.profile.username))
 }
 
 export async function removeFriend(userId: string, friendshipId: string): Promise<void> {
