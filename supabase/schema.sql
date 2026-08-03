@@ -357,3 +357,231 @@ $$;
 
 revoke all on function public.search_profiles_by_username(text) from public;
 grant execute on function public.search_profiles_by_username(text) to authenticated;
+
+-- ============================================================
+-- Squads: groups of friends who train together. Each squad has
+-- a wall (posts); leaders can post announcements that notify
+-- every member via the notifications table.
+-- ============================================================
+create table if not exists public.squads (
+  id           uuid primary key default gen_random_uuid(),
+  name         text not null,
+  description  text,
+  gym_name     text,
+  meeting_info text,
+  created_by   uuid references public.profiles(user_id) on delete set null,
+  created_at   timestamptz not null default now()
+);
+
+create table if not exists public.squad_members (
+  squad_id   uuid references public.squads(id) on delete cascade,
+  user_id    uuid references public.profiles(user_id) on delete cascade,
+  role       text not null default 'member' check (role in ('leader','member')),
+  status     text not null default 'invited' check (status in ('invited','active')),
+  invited_by uuid references public.profiles(user_id) on delete set null,
+  created_at timestamptz not null default now(),
+  joined_at  timestamptz,
+  primary key (squad_id, user_id)
+);
+
+create table if not exists public.squad_posts (
+  squad_id        uuid references public.squads(id) on delete cascade,
+  id              uuid primary key default gen_random_uuid(),
+  author_id       uuid references public.profiles(user_id) on delete cascade,
+  content         text not null,
+  is_announcement boolean not null default false,
+  created_at      timestamptz not null default now()
+);
+
+-- In-app notifications. Rows are written only by security-definer triggers
+-- (announcement fan-out, invites); message is denormalized display copy so
+-- the bell renders from a single query.
+create table if not exists public.notifications (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid references public.profiles(user_id) on delete cascade,
+  type       text not null check (type in ('squad_announcement','squad_invite')),
+  squad_id   uuid references public.squads(id) on delete cascade,
+  post_id    uuid references public.squad_posts(id) on delete cascade,
+  message    text not null,
+  read_at    timestamptz,
+  created_at timestamptz not null default now()
+);
+
+-- Membership helpers: security definer (like are_friends) so RLS policies on
+-- squads/squad_members/squad_posts can consult memberships without recursion.
+create or replace function public.is_squad_member(squad uuid, uid uuid) returns boolean
+language sql security definer set search_path = public stable
+as $$
+  select exists (
+    select 1 from public.squad_members m
+    where m.squad_id = squad and m.user_id = uid and m.status = 'active'
+  );
+$$;
+
+create or replace function public.is_squad_leader(squad uuid, uid uuid) returns boolean
+language sql security definer set search_path = public stable
+as $$
+  select exists (
+    select 1 from public.squad_members m
+    where m.squad_id = squad and m.user_id = uid and m.status = 'active' and m.role = 'leader'
+  );
+$$;
+
+-- Any membership row, including a pending invite — lets invitees read the
+-- squad's name before accepting.
+create or replace function public.has_squad_membership(squad uuid, uid uuid) returns boolean
+language sql security definer set search_path = public stable
+as $$
+  select exists (
+    select 1 from public.squad_members m
+    where m.squad_id = squad and m.user_id = uid
+  );
+$$;
+
+revoke all on function public.is_squad_member(uuid, uuid) from public;
+revoke all on function public.is_squad_leader(uuid, uuid) from public;
+revoke all on function public.has_squad_membership(uuid, uuid) from public;
+grant execute on function public.is_squad_member(uuid, uuid) to authenticated;
+grant execute on function public.is_squad_leader(uuid, uuid) to authenticated;
+grant execute on function public.has_squad_membership(uuid, uuid) to authenticated;
+
+-- Creates a squad and its leader membership atomically (security definer
+-- avoids a chicken-and-egg insert policy on squad_members).
+create or replace function public.create_squad(
+  squad_name text,
+  squad_description text default null,
+  squad_gym text default null,
+  squad_meeting_info text default null
+) returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare
+  new_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+  if squad_name is null or length(trim(squad_name)) = 0 then
+    raise exception 'squad name required';
+  end if;
+
+  insert into public.squads (name, description, gym_name, meeting_info, created_by)
+  values (
+    trim(squad_name),
+    nullif(trim(coalesce(squad_description, '')), ''),
+    nullif(trim(coalesce(squad_gym, '')), ''),
+    nullif(trim(coalesce(squad_meeting_info, '')), ''),
+    auth.uid()
+  )
+  returning id into new_id;
+
+  insert into public.squad_members (squad_id, user_id, role, status, invited_by, joined_at)
+  values (new_id, auth.uid(), 'leader', 'active', auth.uid(), now());
+
+  return new_id;
+end;
+$$;
+
+revoke all on function public.create_squad(text, text, text, text) from public;
+grant execute on function public.create_squad(text, text, text, text) to authenticated;
+
+-- Notification fan-out: an announcement notifies every active member except
+-- the author; a new invite notifies the invitee. Definer triggers mean no
+-- client insert policy is needed on notifications.
+create or replace function public.handle_squad_announcement() returns trigger as $$
+begin
+  if new.is_announcement then
+    insert into public.notifications (user_id, type, squad_id, post_id, message)
+    select
+      m.user_id,
+      'squad_announcement',
+      new.squad_id,
+      new.id,
+      (select s.name from public.squads s where s.id = new.squad_id)
+        || ': ' || left(new.content, 140)
+    from public.squad_members m
+    where m.squad_id = new.squad_id
+      and m.status = 'active'
+      and m.user_id <> new.author_id;
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_squad_announcement on public.squad_posts;
+create trigger on_squad_announcement
+  after insert on public.squad_posts
+  for each row execute procedure public.handle_squad_announcement();
+
+create or replace function public.handle_squad_invite() returns trigger as $$
+begin
+  if new.status = 'invited' then
+    insert into public.notifications (user_id, type, squad_id, message)
+    values (
+      new.user_id,
+      'squad_invite',
+      new.squad_id,
+      'You''ve been invited to join '
+        || (select s.name from public.squads s where s.id = new.squad_id)
+    );
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_squad_invite on public.squad_members;
+create trigger on_squad_invite
+  after insert on public.squad_members
+  for each row execute procedure public.handle_squad_invite();
+
+-- Squads RLS
+alter table public.squads        enable row level security;
+alter table public.squad_members enable row level security;
+alter table public.squad_posts   enable row level security;
+alter table public.notifications enable row level security;
+
+-- squads: visible to anyone with a membership row (invitees see the name);
+-- editable by leaders; created only via the create_squad function.
+create policy "Squads visible to members and invitees" on public.squads
+  for select using (public.has_squad_membership(id, auth.uid()));
+create policy "Leaders can update squad details" on public.squads
+  for update using (public.is_squad_leader(id, auth.uid()))
+  with check (public.is_squad_leader(id, auth.uid()));
+
+-- squad_members: leaders invite their accepted friends as plain members;
+-- invitees accept their own row (never changing role); self or leader removes.
+create policy "Members can view squad membership" on public.squad_members
+  for select using (auth.uid() = user_id or public.is_squad_member(squad_id, auth.uid()));
+create policy "Leaders can invite friends" on public.squad_members
+  for insert with check (
+    public.is_squad_leader(squad_id, auth.uid())
+    and public.are_friends(auth.uid(), user_id)
+    and role = 'member'
+    and status = 'invited'
+    and invited_by = auth.uid()
+  );
+create policy "Invitees can accept their invite" on public.squad_members
+  for update using (auth.uid() = user_id)
+  with check (auth.uid() = user_id and role = 'member');
+create policy "Self or leader can remove membership" on public.squad_members
+  for delete using (auth.uid() = user_id or public.is_squad_leader(squad_id, auth.uid()));
+
+-- squad_posts: members read and post; announcements are leader-only;
+-- authors or leaders can delete.
+create policy "Members can view squad posts" on public.squad_posts
+  for select using (public.is_squad_member(squad_id, auth.uid()));
+create policy "Members can post to the wall" on public.squad_posts
+  for insert with check (
+    auth.uid() = author_id
+    and public.is_squad_member(squad_id, auth.uid())
+    and (not is_announcement or public.is_squad_leader(squad_id, auth.uid()))
+  );
+create policy "Author or leader can delete a post" on public.squad_posts
+  for delete using (auth.uid() = author_id or public.is_squad_leader(squad_id, auth.uid()));
+
+-- notifications: recipients read and mark-read their own; writes happen only
+-- through the definer triggers above.
+create policy "Users can view own notifications" on public.notifications
+  for select using (auth.uid() = user_id);
+create policy "Users can mark own notifications read" on public.notifications
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);

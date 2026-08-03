@@ -85,7 +85,9 @@ export async function deleteFistbump(supabase: SupabaseClient, workoutId: string
     .delete()
     .eq('workout_id', workoutId)
     .eq('user_id', userId)
-  if (error) throw error
+  if (error) throw error 
+}
+
 // Recent workouts with per-set XP and muscle group, for sizing quest targets
 // from actual training volume.
 export type WorkoutVolumeRow = {

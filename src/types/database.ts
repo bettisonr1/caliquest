@@ -88,6 +88,8 @@ export type WorkoutFistbump = {
 
 export type WorkoutWithBumps = WorkoutWithSets & {
   workout_fistbumps: Pick<WorkoutFistbump, 'user_id'>[]
+}
+
 // target_count is base XP to earn in target_muscle_group within duration_days;
 // xp_reward is the completion bonus (0.5 × target → 1.5× total on completion).
 export type Quest = {
@@ -136,3 +138,60 @@ export type Friendship = {
 }
 
 export type PublicProfile = Pick<Profile, 'user_id' | 'username' | 'avatar_url'>
+
+export type Squad = {
+  id:           string
+  name:         string
+  description:  string | null
+  gym_name:     string | null
+  meeting_info: string | null
+  created_by:   string | null
+  created_at:   string
+}
+
+export type SquadRole = 'leader' | 'member'
+export type SquadMemberStatus = 'invited' | 'active'
+
+export type SquadMember = {
+  squad_id:   string
+  user_id:    string
+  role:       SquadRole
+  status:     SquadMemberStatus
+  invited_by: string | null
+  created_at: string
+  joined_at:  string | null
+}
+
+export type SquadMembershipWithSquad = SquadMember & {
+  squads: Squad
+}
+
+export type SquadMemberWithProfile = SquadMember & {
+  profile: Profile
+}
+
+export type SquadPost = {
+  id:              string
+  squad_id:        string
+  author_id:       string
+  content:         string
+  is_announcement: boolean
+  created_at:      string
+}
+
+export type SquadPostWithAuthor = SquadPost & {
+  author: PublicProfile | null
+}
+
+export type NotificationType = 'squad_announcement' | 'squad_invite'
+
+export type Notification = {
+  id:         string
+  user_id:    string
+  type:       NotificationType
+  squad_id:   string | null
+  post_id:    string | null
+  message:    string
+  read_at:    string | null
+  created_at: string
+}
