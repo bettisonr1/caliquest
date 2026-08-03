@@ -100,7 +100,8 @@ const MAX_DURATION_SECONDS = 3600
 export async function saveWorkout(
   userId: string,
   entries: WorkoutEntryInput[],
-  notes: string | null
+  notes: string | null,
+  gymId: string | null = null
 ): Promise<SaveWorkoutOutcome> {
   const supabase = await createClient()
 
@@ -153,7 +154,7 @@ export async function saveWorkout(
 
   const totalXp = validatedSets.reduce((sum, s) => sum + s.xp_earned, 0)
 
-  const workout = await createWorkout(supabase, userId, { totalXp, notes: notes?.trim() || null })
+  const workout = await createWorkout(supabase, userId, { totalXp, notes: notes?.trim() || null, gymId })
   await createWorkoutSets(
     supabase,
     validatedSets.map(s => ({ ...s, workout_id: workout.id }))

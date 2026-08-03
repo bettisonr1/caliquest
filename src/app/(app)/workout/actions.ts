@@ -46,20 +46,22 @@ const saveWorkoutErrorMessages: Record<string, string> = {
 
 export async function saveWorkoutAction(
   entries: WorkoutEntryInput[],
-  notes: string | null
+  notes: string | null,
+  gymId: string | null = null
 ): Promise<SaveWorkoutResult> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { ok: false, error: 'Not signed in.' }
 
   try {
-    const outcome = await saveWorkout(user.id, entries, notes)
+    const outcome = await saveWorkout(user.id, entries, notes, gymId)
 
     revalidatePath('/dashboard')
     revalidatePath('/profile')
     revalidatePath('/skills')
     revalidatePath('/workout')
     revalidatePath('/quests')
+    if (gymId) revalidatePath(`/gyms/${gymId}`)
 
     return { ok: true, ...outcome }
   } catch (e) {

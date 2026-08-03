@@ -61,6 +61,7 @@ export type Workout = {
   completed_at: string | null
   total_xp:     number
   notes:        string | null
+  gym_id:       string | null
 }
 
 export type WorkoutSet = {
@@ -139,6 +140,74 @@ export type Friendship = {
 
 export type PublicProfile = Pick<Profile, 'user_id' | 'username' | 'avatar_url'>
 
+// ------------------------------------------------------------
+// Gym Finder
+// ------------------------------------------------------------
+export type GymSource = 'osm' | 'user'
+export type GymStatus = 'unverified' | 'verified'
+
+export type GymEquipment = {
+  horizontal_bar?:  boolean
+  parallel_bars?:   boolean
+  rings?:           boolean
+  wall_bars?:       boolean
+  push_up_bars?:    boolean
+  [key: string]: boolean | undefined
+}
+
+export type Gym = {
+  id:         string
+  name:       string | null
+  source:     GymSource
+  osm_id:     number | null
+  equipment:  GymEquipment
+  status:     GymStatus
+  created_by: string | null
+  created_at: string
+}
+
+// Shape returned by the gyms_near RPC — coordinates pulled out of
+// PostGIS server-side so the client never parses geography types.
+export type NearbyGym = {
+  id:         string
+  name:       string | null
+  lat:        number
+  lng:        number
+  distance_m: number
+  status:     GymStatus
+  equipment:  GymEquipment
+}
+
+// Returned by name search — same shape minus distance (no reference point).
+export type GymSearchResult = Omit<NearbyGym, 'distance_m'>
+
+export type GymReview = {
+  gym_id:     string
+  user_id:    string
+  rating:     number
+  comment:    string | null
+  created_at: string
+}
+
+export type GymReviewWithProfile = GymReview & {
+  profile: PublicProfile | null
+}
+
+export type GymTier = 'Rumored Spot' | 'Spot' | 'Yard' | 'Forge' | 'Dojo' | 'Temple'
+export type GymRank = 'Visitor' | 'Local' | 'Regular' | 'Legend'
+
+export type GymLeaderboardEntry = {
+  user_id:       string
+  workout_count: number
+  rank:          GymRank | null
+  profile:       PublicProfile | null
+}
+
+export type PassportEntry = {
+  gym_id:        string
+  gym_name:      string | null
+  workout_count: number
+  rank:          GymRank
 export type Squad = {
   id:           string
   name:         string

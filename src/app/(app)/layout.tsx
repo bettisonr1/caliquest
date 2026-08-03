@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Dumbbell, LayoutDashboard, Map, ScrollText, Shield, Trophy, User, Users } from 'lucide-react'
+import { Dumbbell, LayoutDashboard, Map, MapPin, ScrollText, Shield, Trophy, User, Users } from 'lucide-react'
 import { LogoutButton } from '@/components/auth/LogoutButton'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { createClient } from '@/lib/supabase/server'
@@ -9,6 +9,7 @@ const navItems = [
   { href: '/dashboard',   label: 'Dashboard',   shortLabel: 'Home',    icon: LayoutDashboard },
   { href: '/workout',     label: 'Workout',     shortLabel: 'Workout', icon: Dumbbell        },
   { href: '/skills',      label: 'Skills',      shortLabel: 'Skills',  icon: Map             },
+  { href: '/gyms',        label: 'Gyms',        shortLabel: 'Gyms',    icon: MapPin          },
   { href: '/friends',     label: 'Friends',     shortLabel: 'Friends', icon: Users           },
   { href: '/squads',      label: 'Squads',      shortLabel: 'Squads',  icon: Shield          },
   { href: '/quests',      label: 'Quests',      shortLabel: 'Quests',  icon: ScrollText      },

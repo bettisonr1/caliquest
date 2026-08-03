@@ -4,9 +4,11 @@ import { CheckCircle, Dumbbell, Flame, Zap } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { levelProgress } from '@/lib/xp'
 import { getRecentCompletedWorkouts } from '@/lib/repositories/workouts.repository'
+import { getUserPassport } from '@/lib/services/gyms.service'
 import { Avatar } from '@/components/profile/Avatar'
 import { ProfileEditor } from '@/components/profile/ProfileEditor'
 import { WorkoutHistory } from '@/components/workout/WorkoutHistory'
+import { GymPassport } from '@/components/gyms/GymPassport'
 import type { MuscleGroup, Profile } from '@/types/database'
 
 const muscleGroups: { group: MuscleGroup; label: string; bar: string; text: string }[] = [
@@ -28,12 +30,14 @@ export default async function ProfilePage() {
     { count: workoutCount },
     { count: unlockedCount },
     recentWorkouts,
+    passport,
   ] = await Promise.all([
     supabase.from('profiles').select('*').eq('user_id', user.id).single(),
     supabase.from('muscle_group_xp').select('*').eq('user_id', user.id),
     supabase.from('workouts').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
     supabase.from('user_skills').select('skill_id', { count: 'exact', head: true }).eq('user_id', user.id),
     getRecentCompletedWorkouts(supabase, user.id),
+    getUserPassport(user.id),
   ])
 
   const profile = profileRow as Profile | null
@@ -124,6 +128,8 @@ export default async function ProfilePage() {
           })}
         </div>
       </div>
+
+      <GymPassport entries={passport} />
 
       {/* Workout history (fist-bump counts come from friends viewing this profile) */}
       <WorkoutHistory
