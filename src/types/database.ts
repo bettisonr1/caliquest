@@ -14,6 +14,7 @@ export type Profile = {
   last_workout_at: string | null
   onboarded_at:   string | null
   onboarding_xp:  number
+  contributor_points: number
 }
 
 export type MuscleGroupXP = {
@@ -164,6 +165,9 @@ export type Gym = {
   status:     GymStatus
   created_by: string | null
   created_at: string
+  // Fields a community suggestion has already overwritten — the OSM import
+  // script leaves these alone on re-import rather than reverting them.
+  community_edited_fields: string[]
 }
 
 // Shape returned by the gyms_near RPC — coordinates pulled out of
@@ -274,4 +278,44 @@ export type Notification = {
   message:    string
   read_at:    string | null
   created_at: string
+}
+
+// ------------------------------------------------------------
+// Gym community suggestions + Contributor Points
+// ------------------------------------------------------------
+export type GymSuggestionField = 'name' | 'equipment'
+export type GymSuggestionStatus = 'pending' | 'accepted' | 'rejected'
+export type GymSuggestionVoteValue = 'approve' | 'reject'
+
+// Always { value: ... } — a string for `name`, an equipment-shaped object
+// for `equipment` (merged into the gym's existing equipment on accept).
+export type GymSuggestionProposedValue =
+  | { value: string }
+  | { value: GymEquipment }
+
+export type GymSuggestion = {
+  id:             string
+  gym_id:         string
+  field:          GymSuggestionField
+  proposed_value: GymSuggestionProposedValue
+  suggested_by:   string
+  status:         GymSuggestionStatus
+  created_at:     string
+  resolved_at:    string | null
+}
+
+export type GymSuggestionVote = {
+  suggestion_id: string
+  user_id:       string
+  vote:          GymSuggestionVoteValue
+  created_at:    string
+}
+
+// Suggestion enriched with a live vote tally and the viewer's own vote (if
+// any), so the UI can disable voting on ones already voted on without a
+// second round-trip.
+export type GymSuggestionWithVotes = GymSuggestion & {
+  approveCount: number
+  rejectCount:  number
+  viewerVote:   GymSuggestionVoteValue | null
 }

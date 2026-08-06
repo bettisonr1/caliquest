@@ -6,6 +6,7 @@ import { getGymDetail } from '@/lib/services/gyms.service'
 import { TierBadge } from '@/components/gyms/TierBadge'
 import { RankBadge } from '@/components/gyms/RankBadge'
 import { OsmAttribution } from '@/components/gyms/OsmAttribution'
+import { GymSuggestions } from '@/components/gyms/GymSuggestions'
 import { ReviewForm } from '@/components/gyms/ReviewForm'
 
 function humanizeEquipmentKey(key: string): string {
@@ -49,7 +50,7 @@ export default async function GymDetailPage({
     )
   }
 
-  const { gym, lat, lng, tier, reviewCount, avgRating, reviews, viewerReview, leaderboard } = detail
+  const { gym, lat, lng, tier, reviewCount, avgRating, reviews, viewerReview, leaderboard, suggestions } = detail
   const displayName = gym.name ?? `Spot near ${lat.toFixed(3)}, ${lng.toFixed(3)}`
   const equipmentEntries = Object.entries(gym.equipment).filter(([, v]) => v)
   const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
@@ -141,6 +142,8 @@ export default async function GymDetailPage({
           </ul>
         </div>
       )}
+
+      <GymSuggestions gymId={gym.id} gym={gym} suggestions={suggestions} viewerId={user.id} />
 
       <ReviewForm
         gymId={gym.id}

@@ -818,3 +818,152 @@ create policy "Users can view own notifications" on public.notifications
   for select using (auth.uid() = user_id);
 create policy "Users can mark own notifications read" on public.notifications
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ============================================================
+-- Gym Community Suggestions + Contributor Points
+-- Any authenticated user can propose a correction to an existing gym's
+-- `name` or `equipment`; 10 community approvals accepts it, 10 rejections
+-- drops it. Resolution (counting votes, applying the change, awarding
+-- points) happens inside a single security-definer function so two
+-- near-simultaneous votes can't both believe they're "the 10th" and double
+-- apply the change or double-award points.
+-- ============================================================
+alter table public.profiles add column if not exists contributor_points integer not null default 0;
+-- Fields a community suggestion has already overwritten on this gym, so a
+-- future OSM re-import (scripts/import-osm-gyms.ts) knows to leave them
+-- alone instead of silently reverting the community's edit.
+alter table public.gyms add column if not exists community_edited_fields text[] not null default '{}';
+
+create table if not exists public.gym_suggestions (
+  id             uuid primary key default gen_random_uuid(),
+  gym_id         uuid references public.gyms(id) on delete cascade,
+  field          text not null check (field in ('name', 'equipment')),
+  -- Always {"value": ...} — a string for `name`, an equipment-shaped object
+  -- for `equipment` (merged into the existing equipment jsonb on accept,
+  -- not a full replace, so a correction doesn't silently drop unrelated
+  -- equipment tags).
+  proposed_value jsonb not null,
+  suggested_by   uuid references public.profiles(user_id) on delete cascade,
+  status         text not null default 'pending' check (status in ('pending', 'accepted', 'rejected')),
+  created_at     timestamptz not null default now(),
+  resolved_at    timestamptz
+);
+create index if not exists gym_suggestions_gym_idx on public.gym_suggestions (gym_id);
+
+create table if not exists public.gym_suggestion_votes (
+  suggestion_id uuid references public.gym_suggestions(id) on delete cascade,
+  user_id       uuid references public.profiles(user_id) on delete cascade,
+  vote          text not null check (vote in ('approve', 'reject')),
+  created_at    timestamptz not null default now(),
+  primary key (suggestion_id, user_id)
+);
+
+alter table public.gym_suggestions      enable row level security;
+alter table public.gym_suggestion_votes enable row level security;
+
+create policy "Suggestions readable by authenticated users" on public.gym_suggestions
+  for select using (auth.role() = 'authenticated');
+create policy "Votes readable by authenticated users" on public.gym_suggestion_votes
+  for select using (auth.role() = 'authenticated');
+-- No direct insert/update policies for either table beyond what the
+-- functions below need — creation and voting both go through
+-- security-definer functions so resolution stays atomic (see comment above).
+
+-- Creates a pending suggestion and casts the suggester's own automatic
+-- approve vote, atomically. One pending suggestion per (gym, field).
+create or replace function public.propose_gym_suggestion(
+  p_gym_id uuid, p_field text, p_proposed_value jsonb
+) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare
+  v_id uuid;
+begin
+  if p_field not in ('name', 'equipment') then
+    raise exception 'INVALID_FIELD';
+  end if;
+
+  if exists (
+    select 1 from public.gym_suggestions
+    where gym_id = p_gym_id and field = p_field and status = 'pending'
+  ) then
+    raise exception 'SUGGESTION_ALREADY_PENDING';
+  end if;
+
+  insert into public.gym_suggestions (gym_id, field, proposed_value, suggested_by)
+  values (p_gym_id, p_field, p_proposed_value, auth.uid())
+  returning id into v_id;
+
+  insert into public.gym_suggestion_votes (suggestion_id, user_id, vote)
+  values (v_id, auth.uid(), 'approve');
+
+  return v_id;
+end;
+$$;
+
+-- Casts a vote and resolves the suggestion in the same transaction if a
+-- threshold is crossed — this can't safely be split into two round-trips,
+-- see the section comment above.
+create or replace function public.cast_gym_suggestion_vote(p_suggestion_id uuid, p_vote text)
+returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_suggestion record;
+  v_approvals int;
+  v_rejections int;
+  -- +5 contributor points per accepted suggestion — a starting number, no
+  -- balance implications since points are display-only (see the matching
+  -- CONTRIBUTOR_POINTS_PER_ACCEPTED_SUGGESTION constant in gyms.service.ts).
+  v_points_per_accept constant int := 5;
+  v_approve_threshold  constant int := 10;
+  v_reject_threshold   constant int := 10;
+begin
+  if p_vote not in ('approve', 'reject') then raise exception 'INVALID_VOTE'; end if;
+
+  select * into v_suggestion from public.gym_suggestions where id = p_suggestion_id for update;
+  if not found or v_suggestion.status <> 'pending' then raise exception 'SUGGESTION_NOT_PENDING'; end if;
+
+  insert into public.gym_suggestion_votes (suggestion_id, user_id, vote)
+  values (p_suggestion_id, auth.uid(), p_vote);
+
+  select count(*) filter (where vote = 'approve'), count(*) filter (where vote = 'reject')
+    into v_approvals, v_rejections
+    from public.gym_suggestion_votes where suggestion_id = p_suggestion_id;
+
+  if v_approvals >= v_approve_threshold then
+    if v_suggestion.field = 'name' then
+      update public.gyms
+        set name = v_suggestion.proposed_value->>'value',
+            community_edited_fields = case
+              when 'name' = any(community_edited_fields) then community_edited_fields
+              else array_append(community_edited_fields, 'name')
+            end
+        where id = v_suggestion.gym_id;
+    elsif v_suggestion.field = 'equipment' then
+      update public.gyms
+        set equipment = equipment || (v_suggestion.proposed_value->'value'),
+            community_edited_fields = case
+              when 'equipment' = any(community_edited_fields) then community_edited_fields
+              else array_append(community_edited_fields, 'equipment')
+            end
+        where id = v_suggestion.gym_id;
+    end if;
+
+    -- Strictly additive — never deducted on rejection. Kept as its own
+    -- column on profiles, a sibling of total_xp, not merged into it: XP is
+    -- physical training, this is a different axis of progression.
+    update public.profiles set contributor_points = contributor_points + v_points_per_accept
+      where user_id = v_suggestion.suggested_by;
+
+    update public.gym_suggestions set status = 'accepted', resolved_at = now()
+      where id = p_suggestion_id;
+  elsif v_rejections >= v_reject_threshold then
+    update public.gym_suggestions set status = 'rejected', resolved_at = now()
+      where id = p_suggestion_id;
+  end if;
+end;
+$$;
+
+revoke all on function public.propose_gym_suggestion(uuid, text, jsonb) from public;
+revoke all on function public.cast_gym_suggestion_vote(uuid, text) from public;
+grant execute on function public.propose_gym_suggestion(uuid, text, jsonb) to authenticated;
+grant execute on function public.cast_gym_suggestion_vote(uuid, text) to authenticated;

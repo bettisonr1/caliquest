@@ -10,7 +10,7 @@ import type { GymEquipment, NearbyGym } from '@/types/database'
 
 const DEFAULT_CENTER = { lat: 51.5074, lng: -0.1278 }
 
-const EQUIPMENT_OPTIONS: { key: keyof GymEquipment; label: string }[] = [
+export const EQUIPMENT_OPTIONS: { key: keyof GymEquipment; label: string }[] = [
   { key: 'horizontal_bar', label: 'Horizontal bar' },
   { key: 'parallel_bars',  label: 'Parallel bars'  },
   { key: 'rings',          label: 'Rings'          },

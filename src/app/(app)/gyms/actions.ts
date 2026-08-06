@@ -1,16 +1,20 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import type { Logger } from 'pino'
+import { logger } from '@/lib/logger'
 import { createClient } from '@/lib/supabase/server'
 import {
   addGym,
   findNearbyDuplicateGyms,
   getNearbyGymsForUser,
+  proposeSuggestion,
   removeGymReview,
   searchGyms,
   submitGymReview,
+  voteOnSuggestion,
 } from '@/lib/services/gyms.service'
-import type { GymEquipment, GymSearchResult, NearbyGym } from '@/types/database'
+import type { GymEquipment, GymSearchResult, GymSuggestionField, GymSuggestionVoteValue, NearbyGym } from '@/types/database'
 
 type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string }
 
@@ -18,6 +22,35 @@ async function requireUser() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   return user
+}
+
+// Known sentinel error codes from the suggestions service/RPCs are expected
+// control flow (validation, the one-pending-suggestion-per-field rule, a
+// vote arriving after resolution) — logged at warn. Anything else (a thrown
+// Supabase/Postgres error, a bug) is unexpected — logged at error with the
+// full err object. Mirrors squads/actions.ts's logActionOutcome helper.
+const suggestionErrorMessages: Record<string, string> = {
+  GYM_NOT_FOUND:               'This gym is no longer available.',
+  NAME_REQUIRED:                'Enter a name before submitting.',
+  EQUIPMENT_REQUIRED:           'Pick at least one piece of equipment.',
+  INVALID_FIELD:                 'That field can’t be suggested.',
+  SUGGESTION_ALREADY_PENDING:   'There’s already a pending suggestion for this — vote on it instead.',
+  INVALID_VOTE:                  'That’s not a valid vote.',
+  SUGGESTION_NOT_PENDING:       'This suggestion has already been resolved.',
+}
+
+function friendlySuggestionError(e: unknown): string {
+  const code = e instanceof Error ? e.message : 'UNKNOWN_ERROR'
+  return suggestionErrorMessages[code] ?? 'Something went wrong. Please try again.'
+}
+
+function logSuggestionOutcome(log: Logger, action: string, e: unknown, context: Record<string, unknown>) {
+  const code = e instanceof Error ? e.message : 'UNKNOWN_ERROR'
+  if (code in suggestionErrorMessages) {
+    log.warn({ ...context, code }, `${action} rejected`)
+  } else {
+    log.error({ ...context, err: e }, `${action} failed unexpectedly`)
+  }
 }
 
 export async function getNearbyGymsAction(lat: number, lng: number): Promise<ActionResult<NearbyGym[]>> {
@@ -115,5 +148,45 @@ export async function deleteReviewAction(gymId: string): Promise<ActionResult<nu
     return { ok: true, data: null }
   } catch {
     return { ok: false, error: 'Could not remove your review.' }
+  }
+}
+
+export async function proposeSuggestionAction(
+  gymId: string,
+  field: GymSuggestionField,
+  value: string | GymEquipment
+): Promise<ActionResult<{ suggestionId: string }>> {
+  const user = await requireUser()
+  if (!user) return { ok: false, error: 'Not signed in.' }
+  const log = logger.child({ userId: user.id, feature: 'gym-suggestions', action: 'proposeSuggestion', gymId })
+
+  try {
+    const suggestionId = await proposeSuggestion(user.id, gymId, field, value)
+    revalidatePath(`/gyms/${gymId}`)
+    log.info({ suggestionId, field }, 'Gym suggestion proposed')
+    return { ok: true, data: { suggestionId } }
+  } catch (e) {
+    logSuggestionOutcome(log, 'proposeSuggestion', e, { field })
+    return { ok: false, error: friendlySuggestionError(e) }
+  }
+}
+
+export async function voteOnSuggestionAction(
+  gymId: string,
+  suggestionId: string,
+  vote: GymSuggestionVoteValue
+): Promise<ActionResult<null>> {
+  const user = await requireUser()
+  if (!user) return { ok: false, error: 'Not signed in.' }
+  const log = logger.child({ userId: user.id, feature: 'gym-suggestions', action: 'voteOnSuggestion', gymId, suggestionId })
+
+  try {
+    await voteOnSuggestion(user.id, suggestionId, vote)
+    revalidatePath(`/gyms/${gymId}`)
+    log.info({ vote }, 'Gym suggestion vote cast')
+    return { ok: true, data: null }
+  } catch (e) {
+    logSuggestionOutcome(log, 'voteOnSuggestion', e, { vote })
+    return { ok: false, error: friendlySuggestionError(e) }
   }
 }
