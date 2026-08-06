@@ -196,7 +196,7 @@ function enrichWithParkNames(clusters: Cluster[], parks: NamedArea[]): number {
       }
     }
     if (nearest) {
-      cluster.name = `Outdoor gym, ${nearest.name}`
+      cluster.name = nearest.name
       matched++
     }
   }

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
-import { MapPin, Plus, Search } from 'lucide-react'
+import { LocateFixed, MapPin, Plus, Search } from 'lucide-react'
 import { getNearbyGymsAction, searchGymsAction } from '@/app/(app)/gyms/actions'
 import { GymMap } from './GymMap'
 import { OsmAttribution } from './OsmAttribution'
@@ -36,7 +36,14 @@ export function GymsExplorer() {
   // deriving this from hasGeolocation() at init would mismatch on hydration
   // (server always sees no navigator, client sometimes does).
   const [geoState, setGeoState] = useState<GeoState>('pending')
-  const [center, setCenter] = useState(DEFAULT_CENTER)
+  // Two separate centers on purpose: userLocation is the distance-calculation
+  // origin (only ever set from a real geolocation fix) and mapCenter is just
+  // where the map is currently panned to. Selecting a gym used to overwrite
+  // a single shared `center`, which silently re-sorted the whole nearby list
+  // around whatever gym you tapped — mapCenter is safe to move freely without
+  // that side effect.
+  const [userLocation, setUserLocation] = useState(DEFAULT_CENTER)
+  const [mapCenter, setMapCenter] = useState(DEFAULT_CENTER)
   const [nearby, setNearby] = useState<NearbyGym[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
@@ -55,7 +62,8 @@ export function GymsExplorer() {
     navigator.geolocation.getCurrentPosition(
       pos => {
         const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude }
-        setCenter(coords)
+        setUserLocation(coords)
+        setMapCenter(coords)
         setGeoState('granted')
       },
       () => setGeoState('denied'),
@@ -65,7 +73,7 @@ export function GymsExplorer() {
 
   useEffect(() => {
     startTransition(async () => {
-      const result = await getNearbyGymsAction(center.lat, center.lng)
+      const result = await getNearbyGymsAction(userLocation.lat, userLocation.lng)
       if (result.ok === false) {
         setError(result.error)
       } else {
@@ -73,7 +81,7 @@ export function GymsExplorer() {
         setError(null)
       }
     })
-  }, [center.lat, center.lng])
+  }, [userLocation.lat, userLocation.lng])
 
   useEffect(() => {
     const trimmed = query.trim()
@@ -110,7 +118,11 @@ export function GymsExplorer() {
 
   function selectGym(gym: { id: string; lat: number; lng: number }) {
     setSelectedId(gym.id)
-    setCenter({ lat: gym.lat, lng: gym.lng })
+    setMapCenter({ lat: gym.lat, lng: gym.lng })
+  }
+
+  function recenterOnMe() {
+    setMapCenter(userLocation)
   }
 
   return (
@@ -131,8 +143,23 @@ export function GymsExplorer() {
 
       {/* Full-bleed map on mobile — see SkillsTree for the same edge-bleed pattern */}
       <div className="-mx-4 md:mx-0">
-        <div className="h-[45vh] md:h-[55vh] md:rounded-2xl overflow-hidden bg-gray-900">
-          <GymMap center={center} markers={markers} selectedId={selectedId} onMarkerClick={id => setSelectedId(id)} />
+        <div className="relative h-[45vh] md:h-[55vh] md:rounded-2xl overflow-hidden bg-gray-900">
+          <GymMap
+            center={mapCenter}
+            markers={markers}
+            selectedId={selectedId}
+            onMarkerClick={id => setSelectedId(id)}
+            youAreHere={geoState === 'granted' ? userLocation : null}
+          />
+          {geoState === 'granted' && (
+            <button
+              onClick={recenterOnMe}
+              aria-label="Recenter on my location"
+              className="absolute bottom-3 left-3 flex items-center justify-center h-11 w-11 rounded-full bg-gray-900/90 border border-gray-700 text-emerald-400 shadow-lg hover:bg-gray-800 transition-colors"
+            >
+              <LocateFixed className="h-5 w-5" />
+            </button>
+          )}
         </div>
       </div>
 

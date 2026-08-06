@@ -29,6 +29,10 @@ type Props = {
   markers?: MapMarker[]
   selectedId?: string | null
   onMarkerClick?: (id: string) => void
+  // The user's real geolocation fix, rendered as a distinct non-interactive
+  // dot so it reads clearly apart from gym pins — separate from `center`,
+  // which only controls where the map is currently panned to.
+  youAreHere?: { lat: number; lng: number } | null
   // Picker mode: a single draggable marker the caller controls, plus a
   // click-to-place handler (used by the add-gym flow).
   pickerPosition?: { lat: number; lng: number }
@@ -41,6 +45,7 @@ export function GymMapInner({
   markers = [],
   selectedId = null,
   onMarkerClick,
+  youAreHere = null,
   pickerPosition,
   onPick,
 }: Props) {
@@ -48,6 +53,7 @@ export function GymMapInner({
   const mapRef = useRef<MapLibreMap | null>(null)
   const markersRef = useRef<Map<string, Marker>>(new Map())
   const pickerMarkerRef = useRef<Marker | null>(null)
+  const youAreHereMarkerRef = useRef<Marker | null>(null)
   const onPickRef = useRef(onPick)
   useEffect(() => {
     onPickRef.current = onPick
@@ -77,6 +83,7 @@ export function GymMapInner({
       mapRef.current = null
       markersById.clear()
       pickerMarkerRef.current = null
+      youAreHereMarkerRef.current = null
     }
     // Runs once per mount — center/zoom are only used for initial placement,
     // later changes are handled by the recenter effect below.
@@ -156,6 +163,32 @@ export function GymMapInner({
       })
     }
   }, [pickerPosition])
+
+  // "You are here" marker — a plain dot, not a gym pin: no click handler,
+  // not draggable, purely a location indicator.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    if (!youAreHere) {
+      youAreHereMarkerRef.current?.remove()
+      youAreHereMarkerRef.current = null
+      return
+    }
+    if (youAreHereMarkerRef.current) {
+      youAreHereMarkerRef.current.setLngLat([youAreHere.lng, youAreHere.lat])
+    } else {
+      const el = document.createElement('div')
+      el.setAttribute('aria-label', 'Your location')
+      el.style.width = '16px'
+      el.style.height = '16px'
+      el.style.borderRadius = '50%'
+      el.style.border = '3px solid white'
+      el.style.background = '#3b82f6'
+      el.style.boxShadow = '0 0 0 6px rgba(59,130,246,0.25), 0 1px 4px rgba(0,0,0,0.5)'
+      youAreHereMarkerRef.current = new Marker({ element: el }).setLngLat([youAreHere.lng, youAreHere.lat]).addTo(map)
+    }
+  }, [youAreHere?.lat, youAreHere?.lng])
 
   return <div ref={containerRef} className="h-full w-full" />
 }

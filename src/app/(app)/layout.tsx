@@ -1,21 +1,10 @@
 import Link from 'next/link'
-import { Dumbbell, LayoutDashboard, Map, MapPin, ScrollText, Shield, Trophy, User, Users } from 'lucide-react'
 import { LogoutButton } from '@/components/auth/LogoutButton'
+import { MoreNavMenu } from '@/components/nav/MoreNavMenu'
+import { primaryNavItems } from '@/components/nav/nav-items'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { createClient } from '@/lib/supabase/server'
 import { getUnreadCount } from '@/lib/services/notifications.service'
-
-const navItems = [
-  { href: '/dashboard',   label: 'Dashboard',   shortLabel: 'Home',    icon: LayoutDashboard },
-  { href: '/workout',     label: 'Workout',     shortLabel: 'Workout', icon: Dumbbell        },
-  { href: '/skills',      label: 'Skills',      shortLabel: 'Skills',  icon: Map             },
-  { href: '/gyms',        label: 'Gyms',        shortLabel: 'Gyms',    icon: MapPin          },
-  { href: '/friends',     label: 'Friends',     shortLabel: 'Friends', icon: Users           },
-  { href: '/squads',      label: 'Squads',      shortLabel: 'Squads',  icon: Shield          },
-  { href: '/quests',      label: 'Quests',      shortLabel: 'Quests',  icon: ScrollText      },
-  { href: '/leaderboard', label: 'Leaderboard', shortLabel: 'Ranks',   icon: Trophy          },
-  { href: '/profile',     label: 'Profile',     shortLabel: 'Profile', icon: User            },
-]
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -30,7 +19,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             Cali<span className="text-emerald-400">Quest</span>
           </span>
           <nav className="hidden md:flex items-center gap-1">
-            {navItems.map(({ href, label, icon: Icon }) => (
+            {primaryNavItems.map(({ href, label, icon: Icon }) => (
               <Link
                 key={href}
                 href={href}
@@ -40,6 +29,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 {label}
               </Link>
             ))}
+            <MoreNavMenu variant="desktop" />
             <NotificationBell initialUnreadCount={unreadCount} />
             <LogoutButton />
           </nav>
@@ -58,7 +48,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
       {/* Mobile bottom nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-20 border-t border-gray-800 bg-gray-950 flex pb-[env(safe-area-inset-bottom)]">
-        {navItems.map(({ href, shortLabel, icon: Icon }) => (
+        {primaryNavItems.map(({ href, shortLabel, icon: Icon }) => (
           <Link
             key={href}
             href={href}
@@ -68,6 +58,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <span className="text-[10px] max-w-full truncate px-0.5">{shortLabel}</span>
           </Link>
         ))}
+        <MoreNavMenu variant="mobile" />
       </nav>
     </div>
   )
