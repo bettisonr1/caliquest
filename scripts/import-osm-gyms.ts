@@ -14,7 +14,7 @@
 // narrow it for faster iteration.
 
 import 'dotenv/config'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
 const CLUSTER_RADIUS_M = 75
@@ -228,6 +228,60 @@ function clusterElements(elements: OverpassElement[]): Cluster[] {
   return clusters
 }
 
+type GymUpsertRow = {
+  name: string | null
+  location: string
+  source: 'osm'
+  osm_id: number
+  equipment: GymEquipment
+  status: 'verified'
+}
+
+// NOTE for whoever wires up the gym-suggestions feature (community edits to
+// a gym's name/equipment, see gym-suggestions-design.md): an accepted
+// suggestion marks the field it changed in gyms.community_edited_fields.
+// This import is otherwise unrelated work, but a plain upsert() would
+// silently clobber every column unconditionally on the next re-import —
+// easy to forget since the two pieces of work don't touch the same files.
+// Fetch which fields (if any) are already community-edited for the osm_ids
+// in this batch, and leave those columns out of the write for those rows.
+async function upsertGymRowsRespectingCommunityEdits(supabase: SupabaseClient, rows: GymUpsertRow[]) {
+  const osmIds = rows.map(r => r.osm_id)
+  const { data: existing, error: fetchError } = await supabase
+    .from('gyms')
+    .select('osm_id, community_edited_fields')
+    .in('osm_id', osmIds)
+  if (fetchError) throw fetchError
+
+  const editedFieldsByOsmId = new Map<number, string[]>(
+    (existing ?? []).map(row => [row.osm_id as number, (row.community_edited_fields ?? []) as string[]])
+  )
+
+  const cleanRows = rows.filter(r => (editedFieldsByOsmId.get(r.osm_id) ?? []).length === 0)
+  const editedRows = rows.filter(r => (editedFieldsByOsmId.get(r.osm_id) ?? []).length > 0)
+
+  // The common case (no community edits on any row in the batch) stays a
+  // single bulk upsert.
+  if (cleanRows.length > 0) {
+    const { error } = await supabase.from('gyms').upsert(cleanRows, { onConflict: 'osm_id' })
+    if (error) throw error
+  }
+
+  // Rows with a community-edited field go one at a time as a partial
+  // update, omitting exactly the columns the community already corrected.
+  for (const row of editedRows) {
+    const editedFields = editedFieldsByOsmId.get(row.osm_id) ?? []
+    const update: Partial<GymUpsertRow> = { ...row }
+    delete update.osm_id
+    if (editedFields.includes('name')) delete update.name
+    if (editedFields.includes('equipment')) delete update.equipment
+
+    const { error } = await supabase.from('gyms').update(update).eq('osm_id', row.osm_id)
+    if (error) throw error
+    console.log(`  osm_id ${row.osm_id}: preserved community-edited field(s) [${editedFields.join(', ')}]`)
+  }
+}
+
 async function main() {
   const bbox = parseBbox(process.argv.slice(2))
 
@@ -264,8 +318,7 @@ async function main() {
   const BATCH_SIZE = 500
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const batch = rows.slice(i, i + BATCH_SIZE)
-    const { error } = await supabase.from('gyms').upsert(batch, { onConflict: 'osm_id' })
-    if (error) throw error
+    await upsertGymRowsRespectingCommunityEdits(supabase, batch)
     console.log(`Upserted ${Math.min(i + BATCH_SIZE, rows.length)}/${rows.length}`)
   }
 

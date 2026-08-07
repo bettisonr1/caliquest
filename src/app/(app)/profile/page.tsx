@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { CheckCircle, Dumbbell, Flame, Zap } from 'lucide-react'
+import { Award, CheckCircle, Dumbbell, Flame, Zap } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { levelProgress } from '@/lib/xp'
 import { getRecentCompletedWorkouts } from '@/lib/repositories/workouts.repository'
@@ -95,9 +95,18 @@ export default async function ProfilePage() {
               style={{ width: `${pct}%` }}
             />
           </div>
-          <p className="text-xs text-gray-500 mt-1.5">
-            {profile.total_xp.toLocaleString()} XP total
-          </p>
+          <div className="flex flex-col gap-1 mt-1.5 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-gray-500">
+              {profile.total_xp.toLocaleString()} XP total
+            </p>
+            {/* Contributor Points: a separate, open-ended axis of progression
+                (gym-suggestion accepts) — a plain count, not a bar, since
+                there's no "next threshold" the way there is for XP/level. */}
+            <p className="flex items-center gap-1 text-xs text-gray-500">
+              <Award className="h-3.5 w-3.5 text-amber-400" />
+              {profile.contributor_points.toLocaleString()} Contributor Points
+            </p>
+          </div>
         </div>
 
         <div className="mt-4">

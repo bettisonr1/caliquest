@@ -14,6 +14,12 @@ import {
   searchGymsByName,
   upsertGymReview,
 } from '@/lib/repositories/gyms.repository'
+import {
+  castGymSuggestionVote,
+  getPendingSuggestionsForGym,
+  getVotesForSuggestions,
+  proposeGymSuggestion,
+} from '@/lib/repositories/gym-suggestions.repository'
 import type {
   Gym,
   GymEquipment,
@@ -21,6 +27,9 @@ import type {
   GymRank,
   GymReviewWithProfile,
   GymSearchResult,
+  GymSuggestionField,
+  GymSuggestionVoteValue,
+  GymSuggestionWithVotes,
   GymTier,
   NearbyGym,
   PassportEntry,
@@ -127,6 +136,7 @@ export type GymDetail = {
   reviews: GymReviewWithProfile[]
   viewerReview: GymReviewWithProfile | null
   leaderboard: GymLeaderboardEntry[]
+  suggestions: GymSuggestionWithVotes[]
 }
 
 export async function getGymDetail(gymId: string, viewerId: string): Promise<GymDetail | null> {
@@ -135,10 +145,11 @@ export async function getGymDetail(gymId: string, viewerId: string): Promise<Gym
   const gym = await getGymById(supabase, gymId)
   if (!gym) return null
 
-  const [reviews, leaderboardRows, coords] = await Promise.all([
+  const [reviews, leaderboardRows, coords, suggestions] = await Promise.all([
     getGymReviews(supabase, gymId),
     getGymLeaderboardRows(supabase, gymId),
     getGymCoordinates(supabase, gymId),
+    getGymSuggestions(gymId, viewerId),
   ])
 
   const profileIds = [...new Set(reviews.map(r => r.user_id))]
@@ -177,6 +188,7 @@ export async function getGymDetail(gymId: string, viewerId: string): Promise<Gym
     reviews: reviewsWithProfile,
     viewerReview: reviewsWithProfile.find(r => r.user_id === viewerId) ?? null,
     leaderboard,
+    suggestions,
   }
 }
 
@@ -206,6 +218,75 @@ export async function removeGymReview(userId: string, gymId: string): Promise<vo
   const existing = await getGymReviewByUser(supabase, gymId, userId)
   if (!existing) return
   await deleteGymReview(supabase, gymId, userId)
+}
+
+// ------------------------------------------------------------
+// Gym community suggestions + Contributor Points. Voting resolution itself
+// always happens inside the cast_gym_suggestion_vote security-definer
+// function (schema.sql), never here, so two near-simultaneous votes can't
+// double-apply a change — see gym-suggestions.ts for the shared display
+// constants (thresholds, points-per-accept).
+// ------------------------------------------------------------
+export async function proposeSuggestion(
+  userId: string,
+  gymId: string,
+  field: GymSuggestionField,
+  value: string | GymEquipment
+): Promise<string> {
+  const supabase = await createClient()
+  const gym = await getGymById(supabase, gymId)
+  if (!gym) throw new Error('GYM_NOT_FOUND')
+
+  if (field === 'name') {
+    const trimmed = typeof value === 'string' ? value.trim() : ''
+    if (!trimmed) throw new Error('NAME_REQUIRED')
+    return proposeGymSuggestion(supabase, gymId, 'name', { value: trimmed })
+  }
+
+  if (field === 'equipment') {
+    if (typeof value !== 'object' || value === null || Object.keys(value).length === 0) {
+      throw new Error('EQUIPMENT_REQUIRED')
+    }
+    return proposeGymSuggestion(supabase, gymId, 'equipment', { value })
+  }
+
+  throw new Error('INVALID_FIELD')
+}
+
+export async function voteOnSuggestion(
+  userId: string,
+  suggestionId: string,
+  vote: GymSuggestionVoteValue
+): Promise<void> {
+  const supabase = await createClient()
+  await castGymSuggestionVote(supabase, suggestionId, vote)
+}
+
+// Pending suggestions for a gym, each with its live approve/reject tally
+// and the viewer's own vote (if any) so the UI can disable voting on ones
+// already voted on without a second round-trip.
+export async function getGymSuggestions(gymId: string, viewerId: string): Promise<GymSuggestionWithVotes[]> {
+  const supabase = await createClient()
+  const suggestions = await getPendingSuggestionsForGym(supabase, gymId)
+  if (suggestions.length === 0) return []
+
+  const votes = await getVotesForSuggestions(supabase, suggestions.map(s => s.id))
+  const votesBySuggestion = new Map<string, typeof votes>()
+  for (const vote of votes) {
+    const list = votesBySuggestion.get(vote.suggestion_id) ?? []
+    list.push(vote)
+    votesBySuggestion.set(vote.suggestion_id, list)
+  }
+
+  return suggestions.map(suggestion => {
+    const suggestionVotes = votesBySuggestion.get(suggestion.id) ?? []
+    return {
+      ...suggestion,
+      approveCount: suggestionVotes.filter(v => v.vote === 'approve').length,
+      rejectCount: suggestionVotes.filter(v => v.vote === 'reject').length,
+      viewerVote: suggestionVotes.find(v => v.user_id === viewerId)?.vote ?? null,
+    }
+  })
 }
 
 export async function getUserPassport(userId: string): Promise<PassportEntry[]> {
