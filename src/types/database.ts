@@ -15,6 +15,7 @@ export type Profile = {
   onboarded_at:   string | null
   onboarding_xp:  number
   contributor_points: number
+  is_admin:       boolean
 }
 
 export type MuscleGroupXP = {

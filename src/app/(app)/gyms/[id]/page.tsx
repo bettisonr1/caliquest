@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { ArrowLeft, MapPin, Navigation, Star } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getGymDetail } from '@/lib/services/gyms.service'
+import { getProfile } from '@/lib/repositories/profiles.repository'
 import { TierBadge } from '@/components/gyms/TierBadge'
 import { RankBadge } from '@/components/gyms/RankBadge'
 import { OsmAttribution } from '@/components/gyms/OsmAttribution'
@@ -32,7 +33,10 @@ export default async function GymDetailPage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const detail = await getGymDetail(id, user.id)
+  const [detail, profile] = await Promise.all([
+    getGymDetail(id, user.id),
+    getProfile(supabase, user.id),
+  ])
 
   if (!detail) {
     return (
@@ -143,7 +147,13 @@ export default async function GymDetailPage({
         </div>
       )}
 
-      <GymSuggestions gymId={gym.id} gym={gym} suggestions={suggestions} viewerId={user.id} />
+      <GymSuggestions
+        gymId={gym.id}
+        gym={gym}
+        suggestions={suggestions}
+        viewerId={user.id}
+        isAdmin={profile.is_admin}
+      />
 
       <ReviewForm
         gymId={gym.id}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { LocateFixed, MapPin, Plus, Search } from 'lucide-react'
 import { getNearbyGymsAction, searchGymsAction } from '@/app/(app)/gyms/actions'
@@ -50,6 +50,7 @@ export function GymsExplorer() {
   const [searchResults, setSearchResults] = useState<GymSearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const listItemRefs = useRef<Map<string, HTMLLIElement>>(new Map())
 
   useEffect(() => {
     if (!hasGeolocation()) {
@@ -94,6 +95,15 @@ export function GymsExplorer() {
     }, 300)
     return () => clearTimeout(timeout)
   }, [query])
+
+  // Selecting a gym on the map (or via the list itself) should bring its
+  // row into view centered in the scrollable list — otherwise picking a
+  // marker off-screen leaves the matching row scrolled out of sight.
+  useEffect(() => {
+    if (!selectedId) return
+    const el = listItemRefs.current.get(selectedId)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [selectedId])
 
   const showingSearch = query.trim().length >= 2
   const effectiveSearchResults = showingSearch ? searchResults : []
@@ -197,7 +207,13 @@ export function GymsExplorer() {
 
           <ul className="space-y-1 max-h-[40vh] overflow-y-auto -mx-1 px-1">
             {listItems.map(gym => (
-              <li key={gym.id}>
+              <li
+                key={gym.id}
+                ref={el => {
+                  if (el) listItemRefs.current.set(gym.id, el)
+                  else listItemRefs.current.delete(gym.id)
+                }}
+              >
                 <button
                   onClick={() => selectGym(gym)}
                   className={`w-full flex items-center justify-between gap-2 px-3 py-3 rounded-lg text-left transition-colors ${

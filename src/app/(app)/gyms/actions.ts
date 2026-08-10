@@ -6,6 +6,7 @@ import { logger } from '@/lib/logger'
 import { createClient } from '@/lib/supabase/server'
 import {
   addGym,
+  adminUpdateGym,
   findNearbyDuplicateGyms,
   getNearbyGymsForUser,
   proposeSuggestion,
@@ -14,7 +15,7 @@ import {
   submitGymReview,
   voteOnSuggestion,
 } from '@/lib/services/gyms.service'
-import type { GymEquipment, GymSearchResult, GymSuggestionField, GymSuggestionVoteValue, NearbyGym } from '@/types/database'
+import type { Gym, GymEquipment, GymSearchResult, GymSuggestionField, GymSuggestionVoteValue, NearbyGym } from '@/types/database'
 
 type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string }
 
@@ -37,6 +38,7 @@ const suggestionErrorMessages: Record<string, string> = {
   SUGGESTION_ALREADY_PENDING:   'There’s already a pending suggestion for this — vote on it instead.',
   INVALID_VOTE:                  'That’s not a valid vote.',
   SUGGESTION_NOT_PENDING:       'This suggestion has already been resolved.',
+  NOT_ADMIN:                     'You don’t have permission to do that.',
 }
 
 function friendlySuggestionError(e: unknown): string {
@@ -167,6 +169,27 @@ export async function proposeSuggestionAction(
     return { ok: true, data: { suggestionId } }
   } catch (e) {
     logSuggestionOutcome(log, 'proposeSuggestion', e, { field })
+    return { ok: false, error: friendlySuggestionError(e) }
+  }
+}
+
+// Direct edit for admins — bypasses proposeSuggestion/voteOnSuggestion
+// entirely (see adminUpdateGym in gyms.service.ts).
+export async function adminUpdateGymAction(
+  gymId: string,
+  fields: { name?: string | null; equipment?: GymEquipment }
+): Promise<ActionResult<Gym>> {
+  const user = await requireUser()
+  if (!user) return { ok: false, error: 'Not signed in.' }
+  const log = logger.child({ userId: user.id, feature: 'gym-admin-edit', action: 'adminUpdateGym', gymId })
+
+  try {
+    const gym = await adminUpdateGym(user.id, gymId, fields)
+    revalidatePath(`/gyms/${gymId}`)
+    log.info({ fields: Object.keys(fields) }, 'Gym updated by admin')
+    return { ok: true, data: gym }
+  } catch (e) {
+    logSuggestionOutcome(log, 'adminUpdateGym', e, { fields: Object.keys(fields) })
     return { ok: false, error: friendlySuggestionError(e) }
   }
 }

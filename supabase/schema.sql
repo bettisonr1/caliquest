@@ -25,6 +25,11 @@ create table if not exists public.profiles (
 -- ("create table if not exists" above won't add new columns):
 alter table public.profiles add column if not exists onboarded_at  timestamptz;
 alter table public.profiles add column if not exists onboarding_xp integer not null default 0;
+-- Admins can edit gym info directly, bypassing the community suggestion/vote
+-- flow (see is_admin() and "Admins can update gyms" below). No granting UI
+-- yet — set manually via `update public.profiles set is_admin = true where
+-- user_id = '<uuid>'` in the Supabase SQL editor.
+alter table public.profiles add column if not exists is_admin boolean not null default false;
 -- Optional: mark accounts that pre-date onboarding as already onboarded so
 -- they aren't sent through the placement flow:
 -- update public.profiles set onboarded_at = now() where onboarded_at is null and total_xp > 0;
@@ -571,6 +576,15 @@ $$;
 revoke all on function public.get_public_profiles(uuid[]) from public;
 grant execute on function public.get_public_profiles(uuid[]) to authenticated;
 
+-- Admin check, used by RLS policies that let admins bypass the normal
+-- community approval flow (e.g. direct gym edits below) — security definer
+-- so it can read profiles regardless of the profiles select policy.
+create or replace function public.is_admin(uid uuid) returns boolean
+language sql security definer set search_path = public stable
+as $$
+  select coalesce((select is_admin from public.profiles where user_id = uid), false);
+$$;
+
 -- ============================================================
 -- Gym Finder RLS
 -- ============================================================
@@ -581,8 +595,12 @@ create policy "Gyms readable by authenticated users" on public.gyms
   for select using (auth.role() = 'authenticated');
 create policy "Users can add gyms" on public.gyms
   for insert with check (auth.uid() = created_by);
--- No update/delete policy in v1 — avoids vandalism; auto-verification
+-- No general update/delete policy — avoids vandalism; auto-verification
 -- above updates status via a security definer trigger, not user writes.
+-- Admins are the one exception: they can edit gym info (name, equipment)
+-- directly, without going through the suggestion/vote flow below.
+create policy "Admins can update gyms" on public.gyms
+  for update using (public.is_admin(auth.uid()));
 
 create policy "Gym reviews readable by authenticated users" on public.gym_reviews
   for select using (auth.role() = 'authenticated');

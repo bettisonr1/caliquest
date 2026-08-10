@@ -71,6 +71,23 @@ export async function insertGym(
   return data as Gym
 }
 
+// Direct gym edit for admins — bypasses the suggestion/vote flow entirely.
+// Authorized by the "Admins can update gyms" RLS policy, not an RPC.
+export async function updateGymFields(
+  supabase: SupabaseClient,
+  gymId: string,
+  fields: { name?: string | null; equipment?: GymEquipment; community_edited_fields?: string[] }
+) {
+  const { data, error } = await supabase
+    .from('gyms')
+    .update(fields)
+    .eq('id', gymId)
+    .select()
+    .single()
+  if (error) throw error
+  return data as Gym
+}
+
 export async function getGymReviews(supabase: SupabaseClient, gymId: string) {
   const { data, error } = await supabase
     .from('gym_reviews')

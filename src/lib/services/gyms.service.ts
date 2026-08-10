@@ -12,6 +12,7 @@ import {
   getUserGymWorkoutCounts,
   insertGym,
   searchGymsByName,
+  updateGymFields,
   upsertGymReview,
 } from '@/lib/repositories/gyms.repository'
 import {
@@ -20,6 +21,7 @@ import {
   getVotesForSuggestions,
   proposeGymSuggestion,
 } from '@/lib/repositories/gym-suggestions.repository'
+import { getProfile } from '@/lib/repositories/profiles.repository'
 import type {
   Gym,
   GymEquipment,
@@ -251,6 +253,46 @@ export async function proposeSuggestion(
   }
 
   throw new Error('INVALID_FIELD')
+}
+
+// ------------------------------------------------------------
+// Admin direct edit — bypasses the suggestion/vote flow above entirely.
+// Gated by the "Admins can update gyms" RLS policy; the is_admin check here
+// is defense in depth so a non-admin gets a clear error instead of a silent
+// no-op update. Equipment is a full replace here (not merged like an
+// accepted suggestion), since this is a direct edit, not an additive vote.
+// ------------------------------------------------------------
+export async function adminUpdateGym(
+  userId: string,
+  gymId: string,
+  fields: { name?: string | null; equipment?: GymEquipment }
+): Promise<Gym> {
+  const supabase = await createClient()
+
+  const profile = await getProfile(supabase, userId)
+  if (!profile.is_admin) throw new Error('NOT_ADMIN')
+
+  const gym = await getGymById(supabase, gymId)
+  if (!gym) throw new Error('GYM_NOT_FOUND')
+
+  const update: { name?: string | null; equipment?: GymEquipment; community_edited_fields?: string[] } = {}
+  let editedFields = gym.community_edited_fields
+
+  if (fields.name !== undefined) {
+    const trimmed = fields.name?.trim() || ''
+    if (!trimmed) throw new Error('NAME_REQUIRED')
+    update.name = trimmed
+    if (!editedFields.includes('name')) editedFields = [...editedFields, 'name']
+  }
+
+  if (fields.equipment !== undefined) {
+    update.equipment = fields.equipment
+    if (!editedFields.includes('equipment')) editedFields = [...editedFields, 'equipment']
+  }
+
+  if (editedFields !== gym.community_edited_fields) update.community_edited_fields = editedFields
+
+  return updateGymFields(supabase, gymId, update)
 }
 
 export async function voteOnSuggestion(

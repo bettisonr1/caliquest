@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { Pencil, ThumbsDown, ThumbsUp } from 'lucide-react'
-import { proposeSuggestionAction, voteOnSuggestionAction } from '@/app/(app)/gyms/actions'
+import { adminUpdateGymAction, proposeSuggestionAction, voteOnSuggestionAction } from '@/app/(app)/gyms/actions'
 import { EQUIPMENT_OPTIONS } from './AddGymForm'
 import { CONTRIBUTOR_POINTS_PER_ACCEPTED_SUGGESTION, SUGGESTION_APPROVE_THRESHOLD } from '@/lib/gym-suggestions'
 import type { Gym, GymEquipment, GymSuggestionField, GymSuggestionWithVotes } from '@/types/database'
@@ -16,9 +16,12 @@ type Props = {
   gym: Gym
   suggestions: GymSuggestionWithVotes[]
   viewerId: string
+  // Admins edit name/equipment directly (adminUpdateGymAction) instead of
+  // going through the suggest-and-vote flow below — see gyms.service.ts.
+  isAdmin: boolean
 }
 
-export function GymSuggestions({ gymId, gym, suggestions, viewerId }: Props) {
+export function GymSuggestions({ gymId, gym, suggestions, viewerId, isAdmin }: Props) {
   const [openField, setOpenField] = useState<GymSuggestionField | null>(null)
   const [nameValue, setNameValue] = useState('')
   const [equipmentValue, setEquipmentValue] = useState<GymEquipment>({})
@@ -29,12 +32,18 @@ export function GymSuggestions({ gymId, gym, suggestions, viewerId }: Props) {
   const pendingEquipment = suggestions.find(s => s.field === 'equipment') ?? null
   // Only equipment the gym doesn't already have is worth suggesting — an
   // accepted suggestion merges into the existing equipment jsonb rather
-  // than replacing it, so this is strictly additive.
+  // than replacing it, so this is strictly additive. Admins edit directly,
+  // so they see (and can toggle off) everything, not just what's missing.
   const missingEquipment = EQUIPMENT_OPTIONS.filter(({ key }) => !gym.equipment[key])
+  const equipmentOptions = isAdmin ? EQUIPMENT_OPTIONS : missingEquipment
 
   function openForm(field: GymSuggestionField) {
     setOpenField(field)
     setError(null)
+    if (isAdmin) {
+      if (field === 'name') setNameValue(gym.name ?? '')
+      if (field === 'equipment') setEquipmentValue({ ...gym.equipment })
+    }
   }
 
   function closeForm() {
@@ -54,7 +63,9 @@ export function GymSuggestions({ gymId, gym, suggestions, viewerId }: Props) {
     }
     setError(null)
     startTransition(async () => {
-      const result = await proposeSuggestionAction(gymId, 'name', trimmed)
+      const result = isAdmin
+        ? await adminUpdateGymAction(gymId, { name: trimmed })
+        : await proposeSuggestionAction(gymId, 'name', trimmed)
       if (result.ok === false) {
         setError(result.error)
       } else {
@@ -65,14 +76,20 @@ export function GymSuggestions({ gymId, gym, suggestions, viewerId }: Props) {
   }
 
   function submitEquipment() {
-    const selected = Object.fromEntries(Object.entries(equipmentValue).filter(([, v]) => v))
-    if (Object.keys(selected).length === 0) {
+    // Admins replace the gym's equipment outright (so unchecking an item
+    // removes it); a community suggestion only ever adds what's checked.
+    const payload = isAdmin
+      ? Object.fromEntries(EQUIPMENT_OPTIONS.map(({ key }) => [key, Boolean(equipmentValue[key])]))
+      : Object.fromEntries(Object.entries(equipmentValue).filter(([, v]) => v))
+    if (!isAdmin && Object.keys(payload).length === 0) {
       setError('Pick at least one item.')
       return
     }
     setError(null)
     startTransition(async () => {
-      const result = await proposeSuggestionAction(gymId, 'equipment', selected)
+      const result = isAdmin
+        ? await adminUpdateGymAction(gymId, { equipment: payload })
+        : await proposeSuggestionAction(gymId, 'equipment', payload)
       if (result.ok === false) {
         setError(result.error)
       } else {
@@ -169,14 +186,14 @@ export function GymSuggestions({ gymId, gym, suggestions, viewerId }: Props) {
         </ul>
       )}
 
-      {/* Suggest a name edit */}
+      {/* Name edit — direct save for admins, suggest-and-vote otherwise */}
       {openField === 'name' ? (
         <div className="space-y-2 mb-3">
           <label
             htmlFor="suggest-gym-name"
             className="block text-xs font-semibold text-gray-400 uppercase tracking-widest"
           >
-            Suggested name
+            {isAdmin ? 'Gym name' : 'Suggested name'}
           </label>
           <input
             id="suggest-gym-name"
@@ -192,7 +209,7 @@ export function GymSuggestions({ gymId, gym, suggestions, viewerId }: Props) {
               disabled={isPending}
               className="px-4 py-2 rounded-lg bg-emerald-500 text-gray-950 text-sm font-semibold hover:bg-emerald-400 disabled:opacity-50 transition-colors"
             >
-              {isPending ? 'Submitting…' : 'Submit suggestion'}
+              {isPending ? 'Saving…' : isAdmin ? 'Save' : 'Submit suggestion'}
             </button>
             <button
               onClick={closeForm}
@@ -202,7 +219,7 @@ export function GymSuggestions({ gymId, gym, suggestions, viewerId }: Props) {
             </button>
           </div>
         </div>
-      ) : pendingName ? (
+      ) : !isAdmin && pendingName ? (
         <p className="text-xs text-gray-500 mb-3">
           There&apos;s already a pending name suggestion above — vote on it instead of proposing another.
         </p>
@@ -211,19 +228,21 @@ export function GymSuggestions({ gymId, gym, suggestions, viewerId }: Props) {
           onClick={() => openForm('name')}
           className="flex items-center gap-1.5 py-2.5 -my-2.5 text-sm text-gray-400 hover:text-white transition-colors"
         >
-          <Pencil className="h-3.5 w-3.5" /> Suggest a name edit
+          <Pencil className="h-3.5 w-3.5" /> {isAdmin ? 'Edit name' : 'Suggest a name edit'}
         </button>
       )}
 
-      {/* Suggest an equipment edit */}
+      {/* Equipment edit — direct save for admins, suggest-and-vote otherwise */}
       {openField === 'equipment' ? (
         <div className="space-y-2 mt-3">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Equipment to add</p>
-          {missingEquipment.length === 0 ? (
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+            {isAdmin ? 'Equipment' : 'Equipment to add'}
+          </p>
+          {equipmentOptions.length === 0 ? (
             <p className="text-sm text-gray-500">Every equipment type is already marked on this gym.</p>
           ) : (
             <div className="grid grid-cols-2 gap-2">
-              {missingEquipment.map(({ key, label }) => (
+              {equipmentOptions.map(({ key, label }) => (
                 <label
                   key={key}
                   className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-gray-800 text-sm text-gray-200 cursor-pointer"
@@ -242,10 +261,10 @@ export function GymSuggestions({ gymId, gym, suggestions, viewerId }: Props) {
           <div className="flex gap-2">
             <button
               onClick={submitEquipment}
-              disabled={isPending || missingEquipment.length === 0}
+              disabled={isPending || (!isAdmin && equipmentOptions.length === 0)}
               className="px-4 py-2 rounded-lg bg-emerald-500 text-gray-950 text-sm font-semibold hover:bg-emerald-400 disabled:opacity-50 transition-colors"
             >
-              {isPending ? 'Submitting…' : 'Submit suggestion'}
+              {isPending ? 'Saving…' : isAdmin ? 'Save' : 'Submit suggestion'}
             </button>
             <button
               onClick={closeForm}
@@ -255,24 +274,26 @@ export function GymSuggestions({ gymId, gym, suggestions, viewerId }: Props) {
             </button>
           </div>
         </div>
-      ) : pendingEquipment ? (
+      ) : !isAdmin && pendingEquipment ? (
         <p className="text-xs text-gray-500 mt-3">
           There&apos;s already a pending equipment suggestion above — vote on it instead of proposing another.
         </p>
-      ) : missingEquipment.length > 0 ? (
+      ) : equipmentOptions.length > 0 ? (
         <button
           onClick={() => openForm('equipment')}
           className="flex items-center gap-1.5 py-2.5 -my-2.5 mt-1 text-sm text-gray-400 hover:text-white transition-colors"
         >
-          <Pencil className="h-3.5 w-3.5" /> Suggest an equipment edit
+          <Pencil className="h-3.5 w-3.5" /> {isAdmin ? 'Edit equipment' : 'Suggest an equipment edit'}
         </button>
       ) : null}
 
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
 
-      <p className="mt-4 text-xs text-gray-600">
-        Accepted suggestions earn the suggester +{CONTRIBUTOR_POINTS_PER_ACCEPTED_SUGGESTION} Contributor Points.
-      </p>
+      {!isAdmin && (
+        <p className="mt-4 text-xs text-gray-600">
+          Accepted suggestions earn the suggester +{CONTRIBUTOR_POINTS_PER_ACCEPTED_SUGGESTION} Contributor Points.
+        </p>
+      )}
     </div>
   )
 }
