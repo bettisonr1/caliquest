@@ -9,6 +9,7 @@ import {
   adminUpdateGym,
   findNearbyDuplicateGyms,
   getNearbyGymsForUser,
+  getRecentGymsForUser,
   proposeSuggestion,
   removeGymReview,
   searchGyms,
@@ -16,6 +17,8 @@ import {
   voteOnSuggestion,
 } from '@/lib/services/gyms.service'
 import type { Gym, GymEquipment, GymSearchResult, GymSuggestionField, GymSuggestionVoteValue, NearbyGym } from '@/types/database'
+
+type RecentGym = Pick<Gym, 'id' | 'name'>
 
 type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string }
 
@@ -78,6 +81,21 @@ export async function getNearestGymAction(lat: number, lng: number): Promise<Act
     return { ok: true, data: gyms[0] ?? null }
   } catch {
     return { ok: false, error: 'Could not find nearby gyms.' }
+  }
+}
+
+// Recent gyms a user has tagged workouts at, for the workout-tagging
+// picker's shortlist. Same "never blocks workout logging" contract as
+// getNearestGymAction above.
+export async function getRecentGymsAction(): Promise<ActionResult<RecentGym[]>> {
+  const user = await requireUser()
+  if (!user) return { ok: false, error: 'Not signed in.' }
+
+  try {
+    const gyms = await getRecentGymsForUser(user.id)
+    return { ok: true, data: gyms }
+  } catch {
+    return { ok: false, error: 'Could not load recent gyms.' }
   }
 }
 

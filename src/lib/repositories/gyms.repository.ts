@@ -166,3 +166,19 @@ export async function getUserGymWorkoutCounts(supabase: SupabaseClient, userId: 
   }
   return counts
 }
+
+// Gym ids from a user's most recent tagged workouts, newest first —
+// oversampled and deduped in the service layer so "recent gyms" reflects
+// distinct spots, not just repeat visits to the same one. Own rows only,
+// same as getUserGymWorkoutCounts above.
+export async function getRecentlyTaggedGymIds(supabase: SupabaseClient, userId: string, sampleSize = 30) {
+  const { data, error } = await supabase
+    .from('workouts')
+    .select('gym_id')
+    .eq('user_id', userId)
+    .not('gym_id', 'is', null)
+    .order('started_at', { ascending: false })
+    .limit(sampleSize)
+  if (error) throw error
+  return (data ?? []).map(row => (row as { gym_id: string }).gym_id)
+}

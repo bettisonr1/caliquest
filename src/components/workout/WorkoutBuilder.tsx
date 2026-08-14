@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { Clock, Dumbbell, Plus, Repeat, Trash2, X, Zap } from 'lucide-react'
 import { saveWorkoutAction } from '@/app/(app)/workout/actions'
 import { VoiceLogButton } from './VoiceLogButton'
-import { GymTagChip } from '@/components/gyms/GymTagChip'
+import { GymTagPicker } from '@/components/gyms/GymTagPicker'
 import { xpForSet } from '@/lib/xp'
 import type { Exercise, MuscleGroup } from '@/types/database'
 
@@ -332,7 +332,7 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
             })}
 
             <div className="rounded-2xl border border-gray-800 bg-gray-900 p-4">
-              <GymTagChip onSelect={setGymId} />
+              <GymTagPicker onSelect={setGymId} />
 
               <label htmlFor="workout-notes" className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mt-3 mb-2">
                 Notes

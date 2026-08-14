@@ -9,6 +9,7 @@ import {
   getGymsByIds,
   getNearbyGyms,
   getPublicProfiles,
+  getRecentlyTaggedGymIds,
   getUserGymWorkoutCounts,
   insertGym,
   searchGymsByName,
@@ -109,6 +110,32 @@ export async function searchGyms(query: string): Promise<GymSearchResult[]> {
 export async function findNearbyDuplicateGyms(lat: number, lng: number): Promise<NearbyGym[]> {
   const supabase = await createClient()
   return getNearbyGyms(supabase, lat, lng, DEDUPE_RADIUS_M, 5)
+}
+
+// Distinct gyms a user has tagged workouts at recently, newest first — the
+// "recent gyms" shortlist on the workout-tagging picker. Oversamples raw
+// workout rows and dedupes here (rather than in SQL) since the caller only
+// wants a handful of distinct spots, not a distinct-per-row count.
+export async function getRecentGymsForUser(userId: string, limit = 5): Promise<Pick<Gym, 'id' | 'name'>[]> {
+  const supabase = await createClient()
+  const rawIds = await getRecentlyTaggedGymIds(supabase, userId)
+
+  const seen = new Set<string>()
+  const orderedIds: string[] = []
+  for (const id of rawIds) {
+    if (seen.has(id)) continue
+    seen.add(id)
+    orderedIds.push(id)
+    if (orderedIds.length >= limit) break
+  }
+  if (orderedIds.length === 0) return []
+
+  const gyms = await getGymsByIds(supabase, orderedIds)
+  const gymById = new Map(gyms.map(g => [g.id, g]))
+  return orderedIds
+    .map(id => gymById.get(id))
+    .filter((g): g is Gym => g !== undefined)
+    .map(g => ({ id: g.id, name: g.name }))
 }
 
 export async function addGym(
