@@ -145,33 +145,61 @@ Do these in parallel with development — some take days to process.
 Concrete engineering work in this repo, on top of the Capacitor wrapper
 itself:
 
-- [ ] **Account deletion flow** (Guideline 5.1.1(v), blocking). Add a
-  settings action that deletes the user's Supabase auth user + owned rows
-  (workouts, squad membership, etc.), following the same server-action +
-  `logActionOutcome` pattern as `src/app/(app)/squads/actions.ts`. This is
-  the single most important gap to close before submitting.
-- [ ] **Privacy policy page**, hosted at a stable URL — can be a simple
-  static route in this app (e.g. `src/app/(marketing)/privacy/page.tsx`) or
-  hosted elsewhere.
+- [x] **Account deletion flow** (Guideline 5.1.1(v), blocking). Implemented:
+  `src/lib/services/account.service.ts` deletes the Supabase auth user via
+  the Admin API (`src/lib/supabase/admin.ts`, needs
+  `SUPABASE_SERVICE_ROLE_KEY` set server-side — the same var
+  `scripts/import-osm-gyms.ts` already uses). Every table the user *owns*
+  (workouts, sets, skills, quests, friendships, squad membership/posts,
+  notifications, fist-bumps, gym reviews/suggestions) cascades automatically
+  from the `profiles` → `auth.users` `on delete cascade` chain already in
+  `supabase/schema.sql`; rows they merely *created* (`gyms.created_by`,
+  `squads.created_by`) use `on delete set null`, so a gym/squad they set up
+  survives for other members. Wired up via `deleteAccountAction` in
+  `src/app/(app)/profile/actions.ts` (logged the same way as
+  `src/app/(app)/squads/actions.ts`) and a "Danger zone" confirmation card,
+  `src/components/profile/DeleteAccountSection.tsx`, on `/profile`.
+- [x] **Privacy policy page**, hosted at a stable URL. Implemented as
+  `src/app/(marketing)/privacy/page.tsx` (public route — `src/middleware.ts`
+  now exempts `/privacy` from the auth redirect), linked from `/profile` and
+  the login page. Content is accurate to this codebase's actual data flows
+  (Supabase, AWS Amplify, Anthropic/OpenAI for the AI features, gym-finder
+  geolocation) — re-read it before submission in case those flows changed,
+  and swap the placeholder `support@caliquest.app` for a real inbox.
+- [x] **Network-loss handling.** Implemented: `src/components/OfflineBanner.tsx`
+  (mounted globally in `src/app/layout.tsx`) shows a "you're offline" bar
+  via the browser `online`/`offline` events, so a dropped gym wifi
+  connection mid-session doesn't fail silently. This only covers "loaded,
+  then went offline" — the native wrapper's *first* cold-start load with no
+  network still needs a Capacitor-level fallback (e.g. a bundled local
+  error page); add that in §5 once the wrapper exists.
 - [ ] **App icon set** — generate proper PNG sizes from `src/app/icon.svg`
-  (1024×1024 master, Xcode/Capacitor tooling derives the rest).
+  (1024×1024 master, Xcode/Capacitor tooling derives the rest). Not done
+  here — depends on `capacitor-assets`, part of the Capacitor setup in
+  §5.5, not something to pre-generate before that exists.
 - [ ] **Launch/splash screen** — Capacitor's splash screen plugin needs a
   background + logo asset; keep it matching `background_color: '#030712'`
   from `src/app/manifest.ts` so there's no flash-of-white on cold start.
+  Same dependency on §5 as the icon set above.
 - [ ] **Verify heavy client components on-device.** `FlexAvatar` (three.js,
   already lazy-loaded per `CLAUDE.md`) needs to be tested for real on an
   iPhone inside the WKWebView, not just Safari — WebView GPU/memory limits
-  are stricter than Safari's.
-- [ ] **Network-loss handling.** Since the app always loads live from the
-  Amplify URL (no offline bundle), add a basic "you're offline" state so a
-  gym with bad wifi doesn't just show a blank WKWebView error page.
+  are stricter than Safari's. Needs physical hardware, not something this
+  repo can verify on its own.
 - [ ] **Universal Links for the Supabase auth callback**
   (`src/app/auth/callback/route.ts`) if you want magic-link/OAuth email
   links opened on the phone to deep-link straight into the app instead of
   opening Safari. Requires an `apple-app-site-association` file served from
-  the domain root.
+  the domain root — needs the real Team ID and bundle ID from §3/§5, so it
+  can't be pre-built with placeholder values.
 - [ ] **A demo/reviewer account** seeded in the production (or a review-only)
-  Supabase project, to hand to Apple in the review notes.
+  Supabase project, to hand to Apple in the review notes. Once
+  `SUPABASE_SERVICE_ROLE_KEY` is available in an environment (see the
+  account-deletion item above), this can reuse the same admin client
+  (`src/lib/supabase/admin.ts`) in a one-off script, following the pattern
+  in `scripts/import-osm-gyms.ts`, to create the user and seed a bit of
+  realistic workout/skill history so the reviewer isn't looking at an empty
+  account.
 
 ---
 
@@ -375,15 +403,20 @@ Rough timeline for a first-time submission:
 
 - [ ] Apple Developer Program membership active
 - [ ] Bundle ID registered, App Store Connect app record created
-- [ ] Account deletion implemented and tested
-- [ ] Privacy policy live at a public URL, linked in App Store Connect
+- [x] Account deletion implemented (`src/lib/services/account.service.ts` +
+  `DeleteAccountSection`) — still needs an end-to-end test against a real
+  Supabase project with `SUPABASE_SERVICE_ROLE_KEY` set before submitting
+- [x] Privacy policy live in-app at `/privacy` — deploy to production and
+  link that URL in App Store Connect
 - [ ] Support URL live
 - [ ] Capacitor `ios/` project builds and runs on a real iPhone
 - [ ] App icon (1024×1024) + full icon set generated and in the Xcode project
 - [ ] Splash screen matches app background color, no white flash
 - [ ] Status bar styled to match app chrome
 - [ ] Push notifications wired for at least one real notification type (recommended, not blocking)
-- [ ] Offline/network-error state doesn't show a raw WebView error page
+- [x] Offline banner covers mid-session drops (`OfflineBanner.tsx`) — native
+  cold-start error page (no network on first load) still needs a
+  Capacitor-level fallback, see §5
 - [ ] Tested on a notched device for safe-area correctness
 - [ ] Demo/reviewer account seeded with realistic data
 - [ ] App Privacy nutrition label filled out accurately

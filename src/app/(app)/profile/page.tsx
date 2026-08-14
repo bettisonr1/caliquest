@@ -7,6 +7,7 @@ import { getRecentCompletedWorkouts } from '@/lib/repositories/workouts.reposito
 import { getUserPassport } from '@/lib/services/gyms.service'
 import { Avatar } from '@/components/profile/Avatar'
 import { ProfileEditor } from '@/components/profile/ProfileEditor'
+import { DeleteAccountSection } from '@/components/profile/DeleteAccountSection'
 import { WorkoutHistory } from '@/components/workout/WorkoutHistory'
 import { GymPassport } from '@/components/gyms/GymPassport'
 import type { MuscleGroup, Profile } from '@/types/database'
@@ -156,6 +157,14 @@ export default async function ProfilePage() {
           </Link>
         </p>
       )}
+
+      <DeleteAccountSection username={profile.username} />
+
+      <p className="text-center text-xs text-gray-600 pb-2">
+        <Link href="/privacy" className="hover:text-gray-400 transition-colors">
+          Privacy Policy
+        </Link>
+      </p>
     </div>
   )
 }
