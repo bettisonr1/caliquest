@@ -26,6 +26,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# test coverage reports
+coverage/
+
 # misc
 .DS_Store
 *.pem

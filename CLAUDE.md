@@ -7,6 +7,7 @@ Gamified calisthenics web app. Next.js (App Router, TypeScript) + Supabase (Post
 - `npm run dev` — dev server
 - `npm run build` — production build (use this to type-check; there is no separate typecheck script)
 - `npm run lint` — eslint
+- `npm test` — run the test suite once (Vitest); `npm run test:watch` for watch mode, `npm run test:coverage` for a coverage report
 
 ## Architecture
 
@@ -14,6 +15,17 @@ Gamified calisthenics web app. Next.js (App Router, TypeScript) + Supabase (Post
 - `src/lib/services` — business logic; `src/lib/repositories` — Supabase queries; `src/lib/supabase` — client/server Supabase factories.
 - `src/components` — client components, grouped by feature.
 - `supabase/schema.sql` + `seed.sql` — database schema and seed data.
+
+## Testing
+
+Vitest + React Testing Library, run in a jsdom environment. Config is `vitest.config.mts`; shared setup (jest-dom matchers, RTL auto-cleanup) is `src/test/setup.ts`. A GitHub Actions workflow (`.github/workflows/test.yml`) runs the suite and a production build on every push/PR to `main`.
+
+- **Repositories** (`src/lib/repositories`): pass a mocked `SupabaseClient` (see `src/test/helpers/supabase-mock.ts` — `createSupabaseMock()` + `createQueryBuilder({ data, error })`) and assert the right table/filters were used and errors propagate. See `squads.repository.test.ts`.
+- **Services** (`src/lib/services`): `vi.mock('@/lib/supabase/server')` and `vi.mock(...)` the repository modules the service imports, then assert on the business rules (which sentinel `Error` is thrown, what gets passed to the repository). See `squads.service.test.ts`, `skills.service.test.ts`. For services calling an external SDK (Anthropic/OpenAI), mock the SDK module itself — see `voice-workout-parsing.service.test.ts`.
+- **Components** (`src/components`): `vi.mock('next/navigation')` and the page's `actions.ts` module, render with `@testing-library/react`, drive interactions with `@testing-library/user-event`. See `SkillCard.test.tsx`, `CreateSquadForm.test.tsx`.
+- Pure logic (`src/lib/xp.ts`, `src/lib/avatar.ts`, etc.) needs no mocking — test it directly.
+
+Co-locate new test files next to the code under test as `<name>.test.ts(x)`.
 
 ## Logging (required)
 
