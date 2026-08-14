@@ -29,7 +29,14 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/login') ||
     request.nextUrl.pathname.startsWith('/signup')
 
-  if (!user && !isAuthRoute && request.nextUrl.pathname !== '/') {
+  // Public regardless of auth state — /privacy is the URL that goes in App
+  // Store Connect (Guideline 5.1.1), so it must load for a signed-out
+  // reviewer too.
+  const isPublicRoute =
+    request.nextUrl.pathname === '/' ||
+    request.nextUrl.pathname.startsWith('/privacy')
+
+  if (!user && !isAuthRoute && !isPublicRoute) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
@@ -46,7 +53,7 @@ export async function middleware(request: NextRequest) {
   // landing page are left alone.
   const isOnboardingRoute = request.nextUrl.pathname.startsWith('/onboarding')
   const isAuthCallback = request.nextUrl.pathname.startsWith('/auth')
-  if (user && !isAuthCallback && request.nextUrl.pathname !== '/') {
+  if (user && !isAuthCallback && !isPublicRoute) {
     const { data: profile, error } = await supabase
       .from('profiles')
       .select('onboarded_at')

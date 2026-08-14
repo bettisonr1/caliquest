@@ -1,9 +1,11 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { logger } from '@/lib/logger'
 import { createClient } from '@/lib/supabase/server'
 import { AVATAR_BACKGROUNDS, AVATAR_EMOJIS, serializeAvatar } from '@/lib/avatar'
 import { toggleFistBump } from '@/lib/services/profile.service'
+import { deleteAccount } from '@/lib/services/account.service'
 import type { AvatarBackground } from '@/lib/avatar'
 
 export type UpdateProfileResult =
@@ -76,4 +78,34 @@ export async function toggleFistBumpAction(
     const code = e instanceof Error ? e.message : 'UNKNOWN_ERROR'
     return { ok: false, error: fistBumpErrors[code] ?? 'Something went wrong. Please try again.' }
   }
+}
+
+const deleteAccountErrors: Record<string, string> = {
+  DELETE_FAILED: 'Could not delete your account. Please try again or contact support.',
+}
+
+// Guideline 5.1.1(v): an in-app, self-serve way to delete the account and
+// its data (not just "contact support"). See account.service.ts for what
+// deleting the auth user cascades to, and DeleteAccountSection for the
+// confirmation UI.
+export async function deleteAccountAction(): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: 'Not signed in.' }
+
+  const log = logger.child({ userId: user.id, feature: 'account', action: 'deleteAccount' })
+
+  try {
+    await deleteAccount(user.id)
+  } catch (e) {
+    const code = e instanceof Error ? e.message : 'UNKNOWN_ERROR'
+    log.error({ err: e, code }, 'deleteAccount action failed')
+    return { ok: false, error: deleteAccountErrors[code] ?? 'Could not delete your account. Please try again.' }
+  }
+
+  // The auth user (and its cookies' backing row) no longer exists; clear the
+  // local session too so the client doesn't hold a stale one.
+  await supabase.auth.signOut()
+  log.info('Signed out after account deletion')
+  return { ok: true }
 }
