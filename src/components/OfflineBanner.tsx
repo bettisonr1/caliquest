@@ -16,13 +16,15 @@ import { WifiOff } from 'lucide-react'
 // that half needs a Capacitor-level fallback (e.g. a bundled local error
 // page), added when the native wrapper itself is built.
 export function OfflineBanner() {
-  // Lazy initializer (not a synchronous setState in the effect body below)
-  // so the very first client render already reflects reality instead of
-  // flashing "online" for a frame. `navigator` isn't defined during SSR —
-  // this only runs on the client, where useState's initializer runs once.
-  const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
+  // Always start "online" so the server render and the client's first
+  // render agree (Node 21+ exposes a global `navigator`, but without
+  // `onLine`, so branching on it in the initializer diverges from the
+  // browser and breaks hydration). The effect below corrects this
+  // immediately after mount, before the user can notice.
+  const [online, setOnline] = useState(true)
 
   useEffect(() => {
+    setOnline(navigator.onLine)
     const goOnline = () => setOnline(true)
     const goOffline = () => setOnline(false)
     window.addEventListener('online', goOnline)
