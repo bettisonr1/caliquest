@@ -1,14 +1,16 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowLeft, MapPin, Navigation, Star } from 'lucide-react'
+import { ArrowLeft, MapPin, Navigation, Plus, Star } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getGymDetail } from '@/lib/services/gyms.service'
+import { getUpcomingCompetitionsForGym } from '@/lib/services/competitions.service'
 import { getProfile } from '@/lib/repositories/profiles.repository'
 import { TierBadge } from '@/components/gyms/TierBadge'
 import { RankBadge } from '@/components/gyms/RankBadge'
 import { OsmAttribution } from '@/components/gyms/OsmAttribution'
 import { GymSuggestions } from '@/components/gyms/GymSuggestions'
 import { ReviewForm } from '@/components/gyms/ReviewForm'
+import { CompetitionCard } from '@/components/competitions/CompetitionCard'
 
 function humanizeEquipmentKey(key: string): string {
   return key.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase())
@@ -33,9 +35,10 @@ export default async function GymDetailPage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const [detail, profile] = await Promise.all([
+  const [detail, profile, upcomingCompetitions] = await Promise.all([
     getGymDetail(id, user.id),
     getProfile(supabase, user.id),
+    getUpcomingCompetitionsForGym(id),
   ])
 
   if (!detail) {
@@ -121,6 +124,27 @@ export default async function GymDetailPage({
         {gym.source === 'osm' && (
           <div className="mt-4">
             <OsmAttribution />
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-gray-800 bg-gray-900 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-bold text-white uppercase tracking-widest">Upcoming Competitions</h2>
+          <Link
+            href={`/competitions/add?gymId=${gym.id}`}
+            className="flex items-center gap-1 py-2 -my-2 text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5" /> Add
+          </Link>
+        </div>
+        {upcomingCompetitions.length === 0 ? (
+          <p className="text-sm text-gray-500">No upcoming competitions at this gym yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {upcomingCompetitions.map(c => (
+              <CompetitionCard key={c.id} id={c.id} name={c.name} imageUrl={c.image_url} startAt={c.start_at} />
+            ))}
           </div>
         )}
       </div>

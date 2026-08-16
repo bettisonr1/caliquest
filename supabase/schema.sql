@@ -985,3 +985,243 @@ revoke all on function public.propose_gym_suggestion(uuid, text, jsonb) from pub
 revoke all on function public.cast_gym_suggestion_vote(uuid, text) from public;
 grant execute on function public.propose_gym_suggestion(uuid, text, jsonb) to authenticated;
 grant execute on function public.cast_gym_suggestion_vote(uuid, text) to authenticated;
+
+-- ============================================================
+-- Competitions
+-- Events tied to a gym. Users register to compete or mark
+-- themselves as attending to support. See
+-- competitions-feature-design.md for the full design writeup.
+-- ============================================================
+create table if not exists public.competitions (
+  id                         uuid primary key default gen_random_uuid(),
+  gym_id                     uuid not null references public.gyms(id) on delete cascade,
+  name                       text not null,
+  description                text,
+  image_url                  text,
+  start_at                   timestamptz not null,
+  end_at                     timestamptz,                 -- nullable: multi-day events
+  registration_deadline      timestamptz,
+  skill_level                text not null default 'open'
+                               check (skill_level in ('open','beginner','intermediate','advanced')),
+  entry_fee_minor_units      integer,                      -- null/0 = free; minor unit of `currency`
+  currency                   text not null default 'GBP' check (currency ~ '^[A-Z]{3}$'),  -- ISO 4217
+  capacity                   integer,                      -- null = unlimited; applies to 'competing' intent only
+  external_registration_url  text,                         -- third-party signup, if any
+  status                     text not null default 'published' check (status in ('published','cancelled')),
+  created_by                 uuid references public.profiles(user_id) on delete set null,
+  created_at                 timestamptz not null default now()
+);
+create index if not exists competitions_gym_idx on public.competitions (gym_id);
+create index if not exists competitions_upcoming_idx on public.competitions (start_at)
+  where status = 'published';
+
+-- One row per (competition, user); `intent` is upserted in place when a
+-- user switches between competing/attending. No `status` column here —
+-- confirmed-vs-waitlisted is computed by competition_participant_status
+-- below rather than stored (see that function's comment).
+create table if not exists public.competition_participants (
+  competition_id uuid references public.competitions(id) on delete cascade,
+  user_id        uuid references public.profiles(user_id) on delete cascade,
+  intent         text not null check (intent in ('competing','attending')),
+  created_at     timestamptz not null default now(),
+  primary key (competition_id, user_id)
+);
+
+-- ------------------------------------------------------------
+-- Nearby competitions RPC — mirrors gyms_near, joined through the
+-- competition's gym for its location (competitions have no lat/lng of
+-- their own). Ordered by start_at (soonest first), not distance:
+-- "what's on soon nearby" beats "what's nearby regardless of when"
+-- for an events feed, unlike gyms_near where closest is the whole point.
+-- ------------------------------------------------------------
+create or replace function public.competitions_near(
+  lat double precision,
+  lng double precision,
+  radius_m integer default 100000,   -- wider than gyms_near's 25km — competitions are sparser
+  max_results integer default 50
+)
+returns table (
+  id         uuid,
+  name       text,
+  image_url  text,
+  start_at   timestamptz,
+  gym_id     uuid,
+  gym_name   text,
+  lat        double precision,
+  lng        double precision,
+  distance_m double precision
+)
+language sql
+stable
+as $$
+  select
+    c.id, c.name, c.image_url, c.start_at,
+    g.id, g.name,
+    st_y(g.location::geometry) as lat,
+    st_x(g.location::geometry) as lng,
+    st_distance(g.location, st_makepoint(lng, lat)::geography) as distance_m
+  from public.competitions c
+  join public.gyms g on g.id = c.gym_id
+  where c.status = 'published'
+    and c.start_at >= now()
+    and st_dwithin(g.location, st_makepoint(lng, lat)::geography, radius_m)
+  order by c.start_at asc
+  limit max_results;
+$$;
+
+revoke all on function public.competitions_near(double precision, double precision, integer, integer) from public;
+grant execute on function public.competitions_near(double precision, double precision, integer, integer) to authenticated;
+
+-- Name search (manual browse / geolocation-denied fallback) — same shape
+-- as competitions_near minus distance.
+create or replace function public.competitions_search_by_name(query text, max_results integer default 20)
+returns table (
+  id        uuid,
+  name      text,
+  image_url text,
+  start_at  timestamptz,
+  gym_id    uuid,
+  gym_name  text,
+  lat       double precision,
+  lng       double precision
+)
+language sql
+stable
+as $$
+  select
+    c.id, c.name, c.image_url, c.start_at,
+    g.id, g.name,
+    st_y(g.location::geometry) as lat,
+    st_x(g.location::geometry) as lng
+  from public.competitions c
+  join public.gyms g on g.id = c.gym_id
+  where c.status = 'published'
+    and c.start_at >= now()
+    and c.name ilike '%' || query || '%'
+  order by c.start_at asc
+  limit max_results;
+$$;
+
+revoke all on function public.competitions_search_by_name(text, integer) from public;
+grant execute on function public.competitions_search_by_name(text, integer) to authenticated;
+
+-- Competitions with an upcoming date at a given gym, for the gym detail
+-- page's "Upcoming Competitions" card.
+create or replace function public.competitions_for_gym(target_gym_id uuid, max_results integer default 20)
+returns table (
+  id        uuid,
+  name      text,
+  image_url text,
+  start_at  timestamptz
+)
+language sql
+stable
+as $$
+  select c.id, c.name, c.image_url, c.start_at
+  from public.competitions c
+  where c.gym_id = target_gym_id
+    and c.status = 'published'
+    and c.start_at >= now()
+  order by c.start_at asc
+  limit max_results;
+$$;
+
+revoke all on function public.competitions_for_gym(uuid, integer) from public;
+grant execute on function public.competitions_for_gym(uuid, integer) to authenticated;
+
+-- ------------------------------------------------------------
+-- Participant status — confirmed vs. waitlisted is computed here, not
+-- stored: rank each intent's signups by created_at and compare the
+-- 'competing' rank to the competition's capacity. Registering past
+-- capacity is never rejected, it just ranks as waitlisted; a cancellation
+-- frees up a rank and promotes the next person on the very next read —
+-- no promote-the-next-waitlisted-person trigger required. Raising
+-- capacity later needs no backfill either. See competitions-feature-
+-- design.md's "Waitlisting" section for the full rationale.
+-- ------------------------------------------------------------
+-- Column named queue_position, not position — `position` is a reserved
+-- SQL keyword (the POSITION(... IN ...) syntax) and can't be used
+-- unquoted as a column name in a `returns table (...)` list.
+create or replace function public.competition_participant_status(target_competition_id uuid)
+returns table (
+  user_id        uuid,
+  intent         text,
+  queue_position integer,
+  waitlisted     boolean
+)
+language sql
+stable
+as $$
+  with ranked as (
+    select
+      p.user_id,
+      p.intent,
+      row_number() over (partition by p.intent order by p.created_at) as queue_position
+    from public.competition_participants p
+    where p.competition_id = target_competition_id
+  )
+  select
+    r.user_id,
+    r.intent,
+    r.queue_position,
+    (r.intent = 'competing' and c.capacity is not null and r.queue_position > c.capacity) as waitlisted
+  from ranked r
+  cross join public.competitions c
+  where c.id = target_competition_id;
+$$;
+
+revoke all on function public.competition_participant_status(uuid) from public;
+grant execute on function public.competition_participant_status(uuid) to authenticated;
+
+-- ============================================================
+-- Competitions RLS
+-- Same shape as gyms: readable by any authenticated user, writes gated
+-- by ownership, admin bypass via the existing is_admin(). No moderation
+-- queue — trust model matches squads, not the gyms community-suggestion
+-- flow (see competitions-feature-design.md).
+-- ============================================================
+alter table public.competitions             enable row level security;
+alter table public.competition_participants enable row level security;
+
+create policy "Competitions readable by authenticated users" on public.competitions
+  for select using (auth.role() = 'authenticated');
+create policy "Users can create competitions" on public.competitions
+  for insert with check (auth.uid() = created_by);
+create policy "Creator or admin can update competition" on public.competitions
+  for update using (auth.uid() = created_by or public.is_admin(auth.uid()));
+
+-- Participant rows are publicly readable (not just to the competition
+-- creator) so counts and "who's going" lists render for anyone — same
+-- trust level as gym_reviews and the gym leaderboard.
+create policy "Participants readable by authenticated users" on public.competition_participants
+  for select using (auth.role() = 'authenticated');
+create policy "Users manage own participation" on public.competition_participants
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ------------------------------------------------------------
+-- Competition images — first Storage-backed feature in the app. Public
+-- read; write scoped to the uploader's own folder ({user_id}/...) so one
+-- user can't overwrite another's file. RLS is already enabled on
+-- storage.objects by Supabase itself, so no alter table needed here.
+-- ------------------------------------------------------------
+insert into storage.buckets (id, name, public)
+values ('competition-images', 'competition-images', true)
+on conflict (id) do nothing;
+
+create policy "Competition images are publicly readable" on storage.objects
+  for select using (bucket_id = 'competition-images');
+create policy "Users can upload their own competition images" on storage.objects
+  for insert with check (
+    bucket_id = 'competition-images'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+create policy "Users can replace their own competition images" on storage.objects
+  for update using (
+    bucket_id = 'competition-images'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+create policy "Users can delete their own competition images" on storage.objects
+  for delete using (
+    bucket_id = 'competition-images'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );

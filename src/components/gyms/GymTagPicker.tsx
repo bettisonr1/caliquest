@@ -13,7 +13,15 @@ type SuggestedGym = { id: string; name: string | null }
 // own tagging history), and a name search as the always-available
 // fallback. None of these ever block workout logging — any failure just
 // means fewer suggestions.
-export function GymTagPicker({ onSelect }: { onSelect: (gymId: string | null) => void }) {
+type Props = {
+  onSelect: (gymId: string | null) => void
+  // Workout tagging (the original caller) leaves this off — tagging a gym
+  // there is optional. Competition creation passes required, since a
+  // competition always belongs to a gym (see schema.sql).
+  required?: boolean
+}
+
+export function GymTagPicker({ onSelect, required = false }: Props) {
   const [nearest, setNearest] = useState<NearbyGym | null>(null)
   const [recent, setRecent] = useState<SuggestedGym[]>([])
   const [selected, setSelected] = useState<SuggestedGym | null>(null)
@@ -84,7 +92,9 @@ export function GymTagPicker({ onSelect }: { onSelect: (gymId: string | null) =>
   return (
     <div>
       <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">
-        Tag a gym <span className="normal-case font-normal">(optional)</span>
+        {required ? 'Gym' : (
+          <>Tag a gym <span className="normal-case font-normal">(optional)</span></>
+        )}
       </p>
 
       {selected ? (

@@ -1,4 +1,4 @@
-import { Dumbbell, LayoutDashboard, Map, MapPin, ScrollText, Shield, Trophy, User, Users, type LucideIcon } from 'lucide-react'
+import { CalendarDays, Dumbbell, LayoutDashboard, Map, MapPin, ScrollText, Shield, Trophy, User, Users, type LucideIcon } from 'lucide-react'
 
 export type NavItem = { href: string; label: string; shortLabel?: string; icon: LucideIcon }
 
@@ -11,9 +11,10 @@ export const primaryNavItems: NavItem[] = [
 ]
 
 export const moreNavItems: NavItem[] = [
-  { href: '/gyms',        label: 'Gyms',        icon: MapPin },
-  { href: '/friends',     label: 'Friends',     icon: Users  },
-  { href: '/squads',      label: 'Squads',      icon: Shield },
-  { href: '/leaderboard', label: 'Leaderboard', icon: Trophy },
-  { href: '/profile',     label: 'Profile',     icon: User   },
+  { href: '/gyms',         label: 'Gyms',         icon: MapPin      },
+  { href: '/friends',      label: 'Friends',      icon: Users       },
+  { href: '/squads',       label: 'Squads',       icon: Shield      },
+  { href: '/competitions', label: 'Competitions', icon: CalendarDays },
+  { href: '/leaderboard',  label: 'Leaderboard',  icon: Trophy      },
+  { href: '/profile',      label: 'Profile',      icon: User        },
 ]

@@ -320,3 +320,76 @@ export type GymSuggestionWithVotes = GymSuggestion & {
   rejectCount:  number
   viewerVote:   GymSuggestionVoteValue | null
 }
+
+// ------------------------------------------------------------
+// Competitions
+// ------------------------------------------------------------
+export type CompetitionSkillLevel = 'open' | 'beginner' | 'intermediate' | 'advanced'
+export type CompetitionStatus = 'published' | 'cancelled'
+
+export type Competition = {
+  id:                         string
+  gym_id:                     string
+  name:                       string
+  description:                string | null
+  image_url:                  string | null
+  start_at:                   string
+  end_at:                     string | null
+  registration_deadline:      string | null
+  skill_level:                CompetitionSkillLevel
+  entry_fee_minor_units:      number | null
+  currency:                   string
+  capacity:                   number | null
+  external_registration_url:  string | null
+  status:                     CompetitionStatus
+  created_by:                 string | null
+  created_at:                 string
+}
+
+// Shape returned by competitions_near / competitions_search_by_name —
+// gym coordinates pulled through the join so the client never parses
+// PostGIS geography types, same as NearbyGym.
+export type NearbyCompetition = {
+  id:         string
+  name:       string
+  image_url:  string | null
+  start_at:   string
+  gym_id:     string
+  gym_name:   string | null
+  lat:        number
+  lng:        number
+  distance_m: number
+}
+
+export type CompetitionSearchResult = Omit<NearbyCompetition, 'distance_m'>
+
+// Shape returned by competitions_for_gym, for the gym detail page's
+// "Upcoming Competitions" card.
+export type UpcomingCompetitionAtGym = {
+  id:        string
+  name:      string
+  image_url: string | null
+  start_at:  string
+}
+
+export type CompetitionIntent = 'competing' | 'attending'
+
+export type CompetitionParticipant = {
+  competition_id: string
+  user_id:        string
+  intent:         CompetitionIntent
+  created_at:     string
+}
+
+// Shape returned by competition_participant_status — confirmed vs.
+// waitlisted is computed there, not stored (see schema.sql).
+export type CompetitionParticipantStatus = {
+  user_id:        string
+  intent:         CompetitionIntent
+  queue_position: number
+  waitlisted:     boolean
+}
+
+export type CompetitionParticipantStatusWithProfile = CompetitionParticipantStatus & {
+  profile: PublicProfile | null
+}
