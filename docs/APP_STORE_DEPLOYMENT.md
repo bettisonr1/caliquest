@@ -282,8 +282,10 @@ Run `npx cap sync ios` after installing any Capacitor plugin.
 
 ### 5.5 iOS project configuration (in Xcode)
 
-Open `ios/App/App.xcworkspace` in Xcode (always the `.xcworkspace`, not
-`.xcodeproj`, once CocoaPods is involved):
+This project uses Capacitor's Swift Package Manager integration (the
+`ios/App/CapApp-SPM` package), not CocoaPods — there's no `Podfile` and no
+`.xcworkspace`. Open `ios/App/App.xcodeproj` directly in Xcode; it resolves
+the Capacitor plugins as SPM packages itself.
 
 1. **Signing & Capabilities tab** → select your Team (from your Apple
    Developer account) → let Xcode manage signing automatically for
