@@ -25,6 +25,7 @@ function skill(overrides: Partial<SkillWithStatus> = {}): SkillWithStatus {
     required_mg_xp: 1000,
     sort_order: 1,
     form_cues: [],
+    demo_video_url: null,
     status: 'locked',
     prerequisite_ids: [],
     user_mg_xp: 0,
