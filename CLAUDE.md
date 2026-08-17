@@ -51,3 +51,13 @@ CaliQuest is used primarily **on a phone, in the gym**. Every UI change must be 
 6. **No hover-only affordances**: anything revealed on `hover:` must also be reachable by tap (visible by default on mobile or behind an explicit toggle). Hover styles are fine as enhancement only.
 7. **Performance**: assume mid-range phones on gym wifi. Lazy-load heavy client-only components with `next/dynamic` + `ssr: false` (see `FlexAvatar`/three.js), and keep new heavy dependencies out of the initial bundle.
 8. **Verify before finishing**: check changed screens at 375px (portrait phone), 768px, and desktop widths. Watch specifically for horizontal page overflow, content hidden behind the bottom nav, and tap targets that are hard to hit.
+
+## Custom loading screens (required)
+
+Every route under `src/app/(app)` has its own `loading.tsx` next to `page.tsx`, built from the shared primitives in `src/components/loading/Skeleton.tsx` (`SkeletonPage`, `SkeletonBlock`, `SkeletonCircle`, `SkeletonCard`, `SkeletonRow`). Next.js swaps the page's content for this skeleton instantly on navigation (via the App Router's per-segment Suspense boundary), before the server component's data fetch resolves — that's what makes tab switches feel instant instead of frozen. `src/app/(app)/loading.tsx` is only a generic fallback for routes that don't have their own.
+
+**Whenever you change a page's layout** (add/remove/reorder a major section, change a card grid, change a list-row shape), **update that route's `loading.tsx` to match.** A skeleton that no longer resembles its page reintroduces the layout-shift/jank this pattern exists to prevent. Concretely:
+
+- Skeleton shape should echo the real layout: same card boundaries, same grid columns, same list-row structure (avatar + two lines, etc.) — not a generic spinner.
+- Reuse the primitives rather than hand-rolling `animate-pulse` divs, so timing/shade stay consistent across pages.
+- Check the new/changed page's `loading.tsx` at 375px alongside the page itself (see mobile-first rules above) — skeletons are subject to the same overflow/safe-area/edge-bleed rules as real content (e.g. `SkillsTree`'s horizontal-scroll columns, `GymsExplorer`'s full-bleed map).
