@@ -147,7 +147,21 @@ insert into public.skills (id, name, description, muscle_group, difficulty, requ
   ('e0000004-0000-0000-0000-000000000000', 'German Hang',             'Hang in shoulder extension — unlocks the back lever pathway.',                  'mobility', 'intermediate', 1500,  6,
     ARRAY['Let your shoulders open gradually into extension — do not force the range on day one.', 'Keep your grip relaxed and your breathing slow and steady through the hold.', 'Bend your knees or come out immediately if you feel sharp or pinching pain, not just a stretch.']),
   ('e0000007-0000-0000-0000-000000000000', 'Skin the Cat',            'From a hang, tuck through to a German hang and reverse — full shoulder mobility and control under load.', 'mobility', 'intermediate', 2500,  7,
-    ARRAY['Move slowly through the middle of the rotation — that is where control matters most.', 'Keep your core engaged so your body rotates as one unit, not a floppy swing.', 'Reverse back to the start with the same control you used going down.']);
+    ARRAY['Move slowly through the middle of the rotation — that is where control matters most.', 'Keep your core engaged so your body rotates as one unit, not a floppy swing.', 'Reverse back to the start with the same control you used going down.'])
+
+-- Upsert so re-running this file against an already-seeded DB (dev, staging,
+-- prod) updates existing rows in place — e.g. new form_cues on a skill added
+-- earlier — instead of erroring on the id conflict or requiring a destructive
+-- truncate first. skill_prerequisites/user_skills/exercises reference
+-- skills.id, so ids must stay stable across runs; never regenerate them.
+on conflict (id) do update set
+  name           = excluded.name,
+  description    = excluded.description,
+  muscle_group   = excluded.muscle_group,
+  difficulty     = excluded.difficulty,
+  required_mg_xp = excluded.required_mg_xp,
+  sort_order     = excluded.sort_order,
+  form_cues      = excluded.form_cues;
 
 -- ============================================================
 -- SKILL PREREQUISITES
@@ -212,7 +226,11 @@ insert into public.skill_prerequisites (skill_id, prerequisite_skill_id) values
   -- Mobility chain
   ('e0000003-0000-0000-0000-000000000000', 'e0000001-0000-0000-0000-000000000000'), -- Full Bridge   ← Bridge
   ('e0000004-0000-0000-0000-000000000000', 'e0000002-0000-0000-0000-000000000000'), -- German Hang   ← Shoulder Disc
-  ('e0000007-0000-0000-0000-000000000000', 'e0000004-0000-0000-0000-000000000000'); -- Skin the Cat  ← German Hang
+  ('e0000007-0000-0000-0000-000000000000', 'e0000004-0000-0000-0000-000000000000')  -- Skin the Cat  ← German Hang
+
+-- Composite PK is (skill_id, prerequisite_skill_id); an edge either exists or
+-- it doesn't, so a re-run just skips ones already present.
+on conflict (skill_id, prerequisite_skill_id) do nothing;
 
 -- ============================================================
 -- EXERCISES
@@ -301,4 +319,11 @@ insert into public.exercises (id, name, muscle_group, difficulty_multiplier, ski
   ('e1000004-0000-0000-0000-000000000000', 'German Hang',             'mobility', 2, 'e0000004-0000-0000-0000-000000000000', 'duration'),
   ('e1000005-0000-0000-0000-000000000000', 'Wrist Circles & Extensions', 'mobility', 1, 'e0000005-0000-0000-0000-000000000000', 'duration'),
   ('e1000006-0000-0000-0000-000000000000', 'Couch Stretch',           'mobility', 1, 'e0000006-0000-0000-0000-000000000000', 'duration'),
-  ('e1000007-0000-0000-0000-000000000000', 'Skin the Cat',            'mobility', 2, 'e0000007-0000-0000-0000-000000000000', 'reps');
+  ('e1000007-0000-0000-0000-000000000000', 'Skin the Cat',            'mobility', 2, 'e0000007-0000-0000-0000-000000000000', 'reps')
+
+on conflict (id) do update set
+  name                  = excluded.name,
+  muscle_group          = excluded.muscle_group,
+  difficulty_multiplier = excluded.difficulty_multiplier,
+  skill_id              = excluded.skill_id,
+  type                  = excluded.type;

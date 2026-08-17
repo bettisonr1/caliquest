@@ -35,6 +35,9 @@ export type Skill = {
   // Short cues for the skill detail page: what good form looks and feels
   // like once you're in the position/rep.
   form_cues:      string[]
+  // Link to a hosted demo clip (mp4/webm, or a YouTube/Vimeo watch URL) for
+  // the skill detail page. Most skills won't have one yet.
+  demo_video_url: string | null
 }
 
 export type SkillPrerequisite = {
