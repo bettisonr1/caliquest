@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation'
 import { ArrowLeft, CheckCircle, Clock, Lock, Repeat, Sparkles, Zap } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getSkillDetail } from '@/lib/services/skills.service'
+import { SkillDemoVideo } from '@/components/skills/SkillDemoVideo'
 import { SkillUnlockButton } from '@/components/skills/SkillUnlockButton'
 import { XPBar } from '@/components/skills/XPBar'
 import { difficultyLabel, muscleGroupChip, muscleGroupLabel } from '@/lib/skill-display'
@@ -121,6 +122,10 @@ export default async function SkillDetailPage({
           </Link>
         )}
       </div>
+
+      {skill.demo_video_url && (
+        <SkillDemoVideo url={skill.demo_video_url} skillName={skill.name} />
+      )}
 
       {skill.form_cues.length > 0 && (
         <div className="rounded-2xl border border-gray-800 bg-gray-900 p-5">

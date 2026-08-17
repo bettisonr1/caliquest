@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
+import { Capacitor } from '@capacitor/core'
+import { Geolocation } from '@capacitor/geolocation'
 import { LocateFixed, MapPin, Plus, Search } from 'lucide-react'
 import { getNearbyGymsAction, searchGymsAction } from '@/app/(app)/gyms/actions'
 import { GymMap } from './GymMap'
@@ -53,6 +55,41 @@ export function GymsExplorer() {
   const listItemRefs = useRef<Map<string, HTMLLIElement>>(new Map())
 
   useEffect(() => {
+    let cancelled = false
+
+    function onFix(coords: { lat: number; lng: number }) {
+      if (cancelled) return
+      setUserLocation(coords)
+      setMapCenter(coords)
+      setGeoState('granted')
+    }
+
+    function onFail() {
+      if (!cancelled) setGeoState('denied')
+    }
+
+    // The iOS app runs inside a Capacitor WKWebView, where navigator.geolocation
+    // is present but non-functional — it isn't backed by native CoreLocation
+    // permissions. Native platforms have to go through the Capacitor plugin
+    // instead; navigator.geolocation stays the path for the web build.
+    if (Capacitor.isNativePlatform()) {
+      Geolocation.requestPermissions({ permissions: ['location'] })
+        .then(perms => {
+          if (cancelled) return
+          if (perms.location !== 'granted') {
+            setGeoState('denied')
+            return
+          }
+          return Geolocation.getCurrentPosition({ enableHighAccuracy: false, timeout: 8000 }).then(
+            pos => onFix({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+          )
+        })
+        .catch(onFail)
+      return () => {
+        cancelled = true
+      }
+    }
+
     if (!hasGeolocation()) {
       // Must run post-hydration (see the geoState comment above) rather than
       // being derived at init, so this one synchronous setState is required.
@@ -61,15 +98,13 @@ export function GymsExplorer() {
       return
     }
     navigator.geolocation.getCurrentPosition(
-      pos => {
-        const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude }
-        setUserLocation(coords)
-        setMapCenter(coords)
-        setGeoState('granted')
-      },
-      () => setGeoState('denied'),
+      pos => onFix({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      onFail,
       { enableHighAccuracy: false, timeout: 8000 }
     )
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
