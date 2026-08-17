@@ -32,6 +32,9 @@ export type Skill = {
   difficulty:     Difficulty
   required_mg_xp: number
   sort_order:     number
+  // Short cues for the skill detail page: what good form looks and feels
+  // like once you're in the position/rep.
+  form_cues:      string[]
 }
 
 export type SkillPrerequisite = {

@@ -5,8 +5,9 @@ import Link from 'next/link'
 import { Check, ChevronLeft, Sparkles, Zap } from 'lucide-react'
 import { completeOnboardingAction } from '@/app/onboarding/actions'
 import { xpToLevel } from '@/lib/xp'
+import { difficultyLabel } from '@/lib/skill-display'
 import type { OnboardingOutcome } from '@/lib/services/onboarding.service'
-import type { Difficulty, MuscleGroup, Skill, SkillPrerequisite } from '@/types/database'
+import type { MuscleGroup, Skill, SkillPrerequisite } from '@/types/database'
 
 const GROUP_ORDER: MuscleGroup[] = ['pull', 'push', 'core', 'legs', 'mobility']
 
@@ -16,13 +17,6 @@ const groupMeta: Record<MuscleGroup, { label: string; accent: string; blurb: str
   core:     { label: 'Core',     accent: 'text-yellow-400',  blurb: 'Holds and compression strength.' },
   legs:     { label: 'Legs',     accent: 'text-emerald-400', blurb: 'Squatting on two legs — and one.' },
   mobility: { label: 'Mobility', accent: 'text-purple-400',  blurb: 'Bridges, hangs, and healthy shoulders.' },
-}
-
-const difficultyLabel: Record<Difficulty, { label: string; className: string }> = {
-  beginner:     { label: 'Beginner',     className: 'bg-emerald-500/20 text-emerald-400' },
-  intermediate: { label: 'Intermediate', className: 'bg-blue-500/20 text-blue-400'       },
-  advanced:     { label: 'Advanced',     className: 'bg-orange-500/20 text-orange-400'   },
-  elite:        { label: 'Elite',        className: 'bg-purple-500/20 text-purple-400'   },
 }
 
 type Props = {

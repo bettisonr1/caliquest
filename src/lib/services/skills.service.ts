@@ -6,8 +6,9 @@ import {
   getUserUnlockedSkillIds,
   insertUserSkill,
 } from '@/lib/repositories/skills.repository'
+import { getExercisesBySkillId } from '@/lib/repositories/exercises.repository'
 import { getMuscleGroupXP } from '@/lib/repositories/profiles.repository'
-import type { MuscleGroup, SkillPrerequisite, SkillWithStatus } from '@/types/database'
+import type { Exercise, MuscleGroup, SkillPrerequisite, SkillWithStatus } from '@/types/database'
 
 export function isSkillEligible(
   skill: Pick<SkillWithStatus, 'muscle_group' | 'required_mg_xp'>,
@@ -58,6 +59,38 @@ export async function getSkillsWithStatus(userId: string): Promise<{
   })
 
   return { skills: skillsWithStatus, mgXp }
+}
+
+export type SkillDetail = {
+  skill:         SkillWithStatus
+  prerequisites: SkillWithStatus[]
+  // Skills that list this one as a prerequisite — what training this unlocks next.
+  unlocks:       SkillWithStatus[]
+  exercises:     Exercise[]
+}
+
+export async function getSkillDetail(userId: string, skillId: string): Promise<SkillDetail | null> {
+  const supabase = await createClient()
+
+  const [{ skills }, prerequisites, exercises] = await Promise.all([
+    getSkillsWithStatus(userId),
+    getSkillPrerequisites(supabase),
+    getExercisesBySkillId(supabase, skillId),
+  ])
+
+  const skill = skills.find(s => s.id === skillId)
+  if (!skill) return null
+
+  const byId = new Map(skills.map(s => [s.id, s]))
+  const prerequisiteSkills = skill.prerequisite_ids
+    .map(id => byId.get(id))
+    .filter((s): s is SkillWithStatus => s !== undefined)
+  const unlockSkills = prerequisites
+    .filter(p => p.prerequisite_skill_id === skillId)
+    .map(p => byId.get(p.skill_id))
+    .filter((s): s is SkillWithStatus => s !== undefined)
+
+  return { skill, prerequisites: prerequisiteSkills, unlocks: unlockSkills, exercises }
 }
 
 export async function unlockSkill(userId: string, skillId: string): Promise<void> {

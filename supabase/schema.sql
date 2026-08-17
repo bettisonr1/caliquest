@@ -50,8 +50,15 @@ create table if not exists public.skills (
   muscle_group    text not null check (muscle_group in ('push','pull','core','legs','mobility')),
   difficulty      text not null check (difficulty in ('beginner','intermediate','advanced','elite')),
   required_mg_xp  integer not null default 0,
-  sort_order      integer not null default 0
+  sort_order      integer not null default 0,
+  -- Short, punchy cues for the skill detail page: what good form looks and
+  -- feels like once you're in the position/rep. 3-5 per skill.
+  form_cues       text[] not null default '{}'
 );
+
+-- Migration for databases created before the skill detail page existed
+-- ("create table if not exists" above won't add new columns):
+alter table public.skills add column if not exists form_cues text[] not null default '{}';
 
 -- Prerequisite edges (many-to-many)
 create table if not exists public.skill_prerequisites (

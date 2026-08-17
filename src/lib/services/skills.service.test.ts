@@ -6,11 +6,13 @@ vi.mock('@/lib/supabase/server', () => ({
 }))
 vi.mock('@/lib/repositories/skills.repository')
 vi.mock('@/lib/repositories/profiles.repository')
+vi.mock('@/lib/repositories/exercises.repository')
 
 import { createClient } from '@/lib/supabase/server'
 import * as skillsRepo from '@/lib/repositories/skills.repository'
 import * as profilesRepo from '@/lib/repositories/profiles.repository'
-import { getSkillsWithStatus, isSkillEligible, unlockSkill } from './skills.service'
+import * as exercisesRepo from '@/lib/repositories/exercises.repository'
+import { getSkillDetail, getSkillsWithStatus, isSkillEligible, unlockSkill } from './skills.service'
 
 beforeEach(() => {
   vi.mocked(createClient).mockResolvedValue(createSupabaseMock() as never)
@@ -60,6 +62,43 @@ describe('getSkillsWithStatus', () => {
       'blocked-by-prereq': 'locked',    // its prereq is not unlocked
       'blocked-by-xp': 'in_progress',   // no prereqs, but xp threshold not met
     })
+  })
+})
+
+describe('getSkillDetail', () => {
+  const skills = [
+    { id: 'base', name: 'Base Skill', muscle_group: 'push', required_mg_xp: 0 },
+    { id: 'mid', name: 'Mid Skill', muscle_group: 'push', required_mg_xp: 100 },
+    { id: 'top', name: 'Top Skill', muscle_group: 'push', required_mg_xp: 500 },
+  ] as never[]
+  const prerequisites = [
+    { skill_id: 'mid', prerequisite_skill_id: 'base' },
+    { skill_id: 'top', prerequisite_skill_id: 'mid' },
+  ] as never
+
+  beforeEach(() => {
+    vi.mocked(skillsRepo.getAllSkills).mockResolvedValue(skills)
+    vi.mocked(skillsRepo.getSkillPrerequisites).mockResolvedValue(prerequisites)
+    vi.mocked(skillsRepo.getUserUnlockedSkillIds).mockResolvedValue(new Set(['base']))
+    vi.mocked(profilesRepo.getMuscleGroupXP).mockResolvedValue({ push: 100 } as never)
+    vi.mocked(exercisesRepo.getExercisesBySkillId).mockResolvedValue([
+      { id: 'ex1', name: 'Mid Exercise', skill_id: 'mid' } as never,
+    ])
+  })
+
+  it('returns null for an unknown skill id', async () => {
+    await expect(getSkillDetail('u1', 'missing')).resolves.toBeNull()
+  })
+
+  it('resolves the skill with its status, prerequisites, unlocks, and exercises', async () => {
+    const detail = await getSkillDetail('u1', 'mid')
+
+    expect(detail?.skill.id).toBe('mid')
+    expect(detail?.skill.status).toBe('unlocked') // eligible: prereq met + xp threshold met
+    expect(detail?.prerequisites.map(s => s.id)).toEqual(['base'])
+    expect(detail?.unlocks.map(s => s.id)).toEqual(['top'])
+    expect(detail?.exercises).toEqual([{ id: 'ex1', name: 'Mid Exercise', skill_id: 'mid' }])
+    expect(exercisesRepo.getExercisesBySkillId).toHaveBeenCalledWith(expect.anything(), 'mid')
   })
 })
 
