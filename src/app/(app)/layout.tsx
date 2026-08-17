@@ -1,7 +1,6 @@
-import Link from 'next/link'
 import { LogoutButton } from '@/components/auth/LogoutButton'
 import { MoreNavMenu } from '@/components/nav/MoreNavMenu'
-import { primaryNavItems } from '@/components/nav/nav-items'
+import { DesktopPrimaryNav, MobilePrimaryNav } from '@/components/nav/PrimaryNav'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { createClient } from '@/lib/supabase/server'
 import { getUnreadCount } from '@/lib/services/notifications.service'
@@ -19,16 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             Cali<span className="text-emerald-400">Quest</span>
           </span>
           <nav className="hidden md:flex items-center gap-1">
-            {primaryNavItems.map(({ href, label, icon: Icon }) => (
-              <Link
-                key={href}
-                href={href}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </Link>
-            ))}
+            <DesktopPrimaryNav />
             <MoreNavMenu variant="desktop" />
             <NotificationBell initialUnreadCount={unreadCount} />
             <LogoutButton />
@@ -48,16 +38,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
       {/* Mobile bottom nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-20 border-t border-gray-800 bg-gray-950 flex pb-[env(safe-area-inset-bottom)]">
-        {primaryNavItems.map(({ href, shortLabel, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            className="flex-1 min-w-0 flex flex-col items-center gap-0.5 py-2 text-gray-500 hover:text-emerald-400 transition-colors"
-          >
-            <Icon className="h-5 w-5" />
-            <span className="text-[10px] max-w-full truncate px-0.5">{shortLabel}</span>
-          </Link>
-        ))}
+        <MobilePrimaryNav />
         <MoreNavMenu variant="mobile" />
       </nav>
     </div>
