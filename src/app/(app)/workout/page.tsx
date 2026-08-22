@@ -1,11 +1,10 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedUser } from '@/lib/supabase/server'
 import { getWorkoutLoggingOptions } from '@/lib/services/workout-logging.service'
 import { WorkoutBuilder } from '@/components/workout/WorkoutBuilder'
 
 export default async function WorkoutPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) redirect('/login')
 
   const { exercisesBySkillId } = await getWorkoutLoggingOptions(user.id)

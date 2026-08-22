@@ -1,14 +1,13 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedUser } from '@/lib/supabase/server'
 import { unlockSkill } from '@/lib/services/skills.service'
 
 export async function unlockSkillAction(
   skillId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) return { ok: false, error: 'NOT_AUTHENTICATED' }
 
   try {

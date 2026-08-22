@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ArrowLeft, Dumbbell, Flame, Zap } from 'lucide-react'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedUser } from '@/lib/supabase/server'
 import { levelProgress } from '@/lib/xp'
 import { getFriendProfileData } from '@/lib/services/profile.service'
 import { Avatar } from '@/components/profile/Avatar'
@@ -13,8 +13,7 @@ export default async function FriendProfilePage({
   params: Promise<{ userId: string }>
 }) {
   const { userId } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) redirect('/login')
   if (userId === user.id) redirect('/profile')
 

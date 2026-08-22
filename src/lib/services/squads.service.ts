@@ -3,6 +3,7 @@ import {
   acceptInvite,
   createSquadViaRpc,
   deleteMembership,
+  getActiveMemberCountsBySquadId,
   getMembership,
   getMembershipsForUser,
   getSquadById,
@@ -42,12 +43,14 @@ export async function getSquadsPageData(userId: string): Promise<SquadsPageData>
   const memberships = await getMembershipsForUser(supabase, userId)
 
   const active = memberships.filter(m => m.status === 'active')
-  const mySquads = await Promise.all(
-    active.map(async membership => {
-      const members = await getSquadMembers(supabase, membership.squad_id)
-      return { membership, memberCount: members.filter(m => m.status === 'active').length }
-    })
+  const memberCounts = await getActiveMemberCountsBySquadId(
+    supabase,
+    active.map(m => m.squad_id)
   )
+  const mySquads = active.map(membership => ({
+    membership,
+    memberCount: memberCounts[membership.squad_id] ?? 0,
+  }))
 
   return {
     mySquads,

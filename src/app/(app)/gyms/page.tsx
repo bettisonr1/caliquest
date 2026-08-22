@@ -1,11 +1,10 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedUser } from '@/lib/supabase/server'
 import { GymsExplorer } from '@/components/gyms/GymsExplorer'
 import { getUnreadCount } from '@/lib/services/notifications.service'
 
 export default async function GymsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) redirect('/login')
 
   // The app header (and its NotificationBell) is hidden on mobile for this

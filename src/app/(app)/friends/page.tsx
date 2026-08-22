@@ -1,13 +1,12 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedUser } from '@/lib/supabase/server'
 import { getFriendsPageData } from '@/lib/services/friends.service'
 import { AddFriendForm } from '@/components/friends/AddFriendForm'
 import { FriendRequests } from '@/components/friends/FriendRequests'
 import { FriendsList } from '@/components/friends/FriendsList'
 
 export default async function FriendsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) redirect('/login')
 
   const { friends, incoming, outgoing } = await getFriendsPageData(user.id)

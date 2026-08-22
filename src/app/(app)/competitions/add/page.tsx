@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthenticatedUser } from '@/lib/supabase/server'
 import { getGymById } from '@/lib/repositories/gyms.repository'
 import { CompetitionForm } from '@/components/competitions/CompetitionForm'
 
@@ -11,7 +11,7 @@ export default async function AddCompetitionPage({
   const { gymId } = await searchParams
 
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) redirect('/login')
 
   // Arriving from a gym's "Add competition" CTA pre-fills and locks the

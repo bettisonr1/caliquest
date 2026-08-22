@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { ArrowLeft, CheckCircle, Clock, Lock, Repeat, Sparkles, Zap } from 'lucide-react'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedUser } from '@/lib/supabase/server'
 import { getSkillDetail } from '@/lib/services/skills.service'
 import { SkillUnlockButton } from '@/components/skills/SkillUnlockButton'
 import { XPBar } from '@/components/skills/XPBar'
@@ -65,8 +65,7 @@ export default async function SkillDetailPage({
 }) {
   const { id } = await params
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) redirect('/login')
 
   const detail = await getSkillDetail(user.id, id)

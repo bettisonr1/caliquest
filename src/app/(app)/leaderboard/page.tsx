@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedUser } from '@/lib/supabase/server'
 import { getFriendsLeaderboard } from '@/lib/services/friends.service'
 import { FriendLeaderboard } from '@/components/leaderboard/FriendLeaderboard'
 import { PeriodToggle } from '@/components/leaderboard/PeriodToggle'
@@ -13,8 +13,7 @@ export default async function LeaderboardPage({
   const { period: rawPeriod } = await searchParams
   const period: LeaderboardPeriod = rawPeriod === 'month' ? 'month' : 'week'
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) redirect('/login')
 
   const entries = await getFriendsLeaderboard(user.id, period)

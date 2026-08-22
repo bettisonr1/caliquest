@@ -57,6 +57,27 @@ export async function getSquadMembers(supabase: SupabaseClient, squadId: string)
   return (data ?? []) as SquadMember[]
 }
 
+// Batched alternative to calling getSquadMembers once per squad just to
+// count active members (the squads list page previously did exactly that,
+// one round trip per squad the user is in).
+export async function getActiveMemberCountsBySquadId(
+  supabase: SupabaseClient,
+  squadIds: string[]
+): Promise<Record<string, number>> {
+  if (squadIds.length === 0) return {}
+  const { data, error } = await supabase
+    .from('squad_members')
+    .select('squad_id')
+    .in('squad_id', squadIds)
+    .eq('status', 'active')
+  if (error) throw error
+  const counts: Record<string, number> = {}
+  for (const row of data ?? []) {
+    counts[row.squad_id] = (counts[row.squad_id] ?? 0) + 1
+  }
+  return counts
+}
+
 export async function getMembership(supabase: SupabaseClient, squadId: string, userId: string) {
   const { data, error } = await supabase
     .from('squad_members')

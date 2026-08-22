@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { Dumbbell, Flame, History, Zap } from 'lucide-react'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthenticatedUser } from '@/lib/supabase/server'
 import { levelProgress } from '@/lib/xp'
 import {
   computeWeekStats,
@@ -12,7 +12,7 @@ import type { Profile, WorkoutWithSets } from '@/types/database'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) redirect('/login')
 
   const weekAgo = sevenDaysAgoIso()
