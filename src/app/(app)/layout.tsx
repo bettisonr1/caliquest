@@ -1,13 +1,8 @@
 import { Suspense } from 'react'
-import { LogoutButton } from '@/components/auth/LogoutButton'
-import { MoreNavMenu } from '@/components/nav/MoreNavMenu'
-import { DesktopPrimaryNav, MobilePrimaryNav } from '@/components/nav/PrimaryNav'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { NotificationBellLoader } from '@/components/notifications/NotificationBellLoader'
 import { getAuthenticatedUser } from '@/lib/supabase/server'
 import { AppShell } from '@/components/nav/AppShell'
-import { createClient } from '@/lib/supabase/server'
-import { getUnreadCount } from '@/lib/services/notifications.service'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { data: { user } } = await getAuthenticatedUser()
@@ -25,5 +20,5 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <NotificationBell initialUnreadCount={0} />
   )
 
-  return <AppShell unreadCount={unreadCount}>{children}</AppShell>
+  return <AppShell bell={bell}>{children}</AppShell>
 }

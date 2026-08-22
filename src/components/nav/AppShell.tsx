@@ -4,7 +4,6 @@ import { usePathname } from 'next/navigation'
 import { LogoutButton } from '@/components/auth/LogoutButton'
 import { MoreNavMenu } from '@/components/nav/MoreNavMenu'
 import { DesktopPrimaryNav, MobilePrimaryNav } from '@/components/nav/PrimaryNav'
-import { NotificationBell } from '@/components/notifications/NotificationBell'
 
 // Routes whose content wants the entire mobile viewport (edge-to-edge, up
 // to where the header would be) instead of the header + padded main. The
@@ -14,10 +13,14 @@ import { NotificationBell } from '@/components/notifications/NotificationBell'
 const FULL_BLEED_MOBILE_ROUTES = new Set(['/gyms'])
 
 export function AppShell({
-  unreadCount,
+  bell,
   children,
 }: {
-  unreadCount: number
+  // Pre-rendered by the (app) layout (a Suspense-wrapped NotificationBellLoader
+  // server component) so the unread-count query doesn't block this client
+  // component from rendering. Rendered twice below (desktop nav + mobile
+  // bar); NotificationBellLoader's cache() dedupes that back to one query.
+  bell: React.ReactNode
   children: React.ReactNode
 }) {
   const pathname = usePathname()
@@ -37,12 +40,12 @@ export function AppShell({
           <nav className="hidden md:flex items-center gap-1">
             <DesktopPrimaryNav />
             <MoreNavMenu variant="desktop" />
-            <NotificationBell initialUnreadCount={unreadCount} />
+            {bell}
             <LogoutButton />
           </nav>
           {/* The bottom nav has no room for logout/bell, so surface them here on mobile */}
           <div className="md:hidden flex items-center gap-1">
-            <NotificationBell initialUnreadCount={unreadCount} />
+            {bell}
             <LogoutButton iconOnly />
           </div>
         </div>
