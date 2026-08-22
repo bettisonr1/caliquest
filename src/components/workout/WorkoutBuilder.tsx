@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import dynamic from 'next/dynamic'
-import { Clock, Dumbbell, Plus, Repeat, Trash2, X, Zap } from 'lucide-react'
+import { ChevronDown, ChevronUp, Clock, Dumbbell, ListPlus, Plus, Repeat, Trash2, X, Zap } from 'lucide-react'
 import { saveWorkoutAction } from '@/app/(app)/workout/actions'
 import { VoiceLogButton } from './VoiceLogButton'
 import { GymTagPicker } from '@/components/gyms/GymTagPicker'
@@ -37,6 +37,7 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
   const [entries, setEntries] = useState<Entry[]>([])
   const [nextKey, setNextKey] = useState(0)
   const [filter, setFilter] = useState<MuscleGroup | 'all'>('all')
+  const [showExercises, setShowExercises] = useState(false)
   const [notes, setNotes] = useState('')
   const [unmatched, setUnmatched] = useState<string[]>([])
   const [gymId, setGymId] = useState<string | null>(null)
@@ -206,53 +207,67 @@ export function WorkoutBuilder({ exercises }: { exercises: Exercise[] }) {
             </button>
           </div>
         )}
-        <div className="flex flex-wrap gap-1.5 mb-3">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-              filter === 'all' ? 'bg-gray-100 text-gray-900' : 'bg-gray-800 text-gray-400 hover:text-white'
-            }`}
-          >
-            All
-          </button>
-          {muscleGroups.map(({ group, label, chip }) => (
-            <button
-              key={group}
-              onClick={() => setFilter(group)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                filter === group ? chip : 'bg-gray-800 text-gray-400 hover:text-white'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <ul className="space-y-1 max-h-96 overflow-y-auto pr-1">
-          {visibleExercises.map(exercise => (
-            <li key={exercise.id}>
+        <button
+          onClick={() => setShowExercises(v => !v)}
+          aria-expanded={showExercises}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+        >
+          <ListPlus className="h-4 w-4" />
+          {showExercises ? 'Hide exercise list' : 'Log manually'}
+          {showExercises ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+        </button>
+
+        {showExercises && (
+          <div className="mt-3">
+            <div className="flex flex-wrap gap-1.5 mb-3">
               <button
-                onClick={() => addExercise(exercise)}
-                className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors group"
+                onClick={() => setFilter('all')}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                  filter === 'all' ? 'bg-gray-100 text-gray-900' : 'bg-gray-800 text-gray-400 hover:text-white'
+                }`}
               >
-                <span className="flex items-center gap-2 min-w-0">
-                  {exercise.type === 'duration'
-                    ? <Clock className="h-3.5 w-3.5 text-gray-500 shrink-0" />
-                    : <Repeat className="h-3.5 w-3.5 text-gray-500 shrink-0" />}
-                  <span className="truncate">{exercise.name}</span>
-                </span>
-                <span className="flex items-center gap-1.5 shrink-0">
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${chipClass[exercise.muscle_group]}`}>
-                    ×{exercise.difficulty_multiplier}
-                  </span>
-                  <Plus className="h-3.5 w-3.5 text-gray-600 group-hover:text-emerald-400" />
-                </span>
+                All
               </button>
-            </li>
-          ))}
-          {visibleExercises.length === 0 && (
-            <li className="px-3 py-2 text-sm text-gray-500">No unlocked exercises in this group yet.</li>
-          )}
-        </ul>
+              {muscleGroups.map(({ group, label, chip }) => (
+                <button
+                  key={group}
+                  onClick={() => setFilter(group)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                    filter === group ? chip : 'bg-gray-800 text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <ul className="space-y-1 max-h-96 overflow-y-auto pr-1">
+              {visibleExercises.map(exercise => (
+                <li key={exercise.id}>
+                  <button
+                    onClick={() => addExercise(exercise)}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors group"
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      {exercise.type === 'duration'
+                        ? <Clock className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                        : <Repeat className="h-3.5 w-3.5 text-gray-500 shrink-0" />}
+                      <span className="truncate">{exercise.name}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5 shrink-0">
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${chipClass[exercise.muscle_group]}`}>
+                        ×{exercise.difficulty_multiplier}
+                      </span>
+                      <Plus className="h-3.5 w-3.5 text-gray-600 group-hover:text-emerald-400" />
+                    </span>
+                  </button>
+                </li>
+              ))}
+              {visibleExercises.length === 0 && (
+                <li className="px-3 py-2 text-sm text-gray-500">No unlocked exercises in this group yet.</li>
+              )}
+            </ul>
+          </div>
+        )}
       </aside>
 
       {/* Current workout */}
