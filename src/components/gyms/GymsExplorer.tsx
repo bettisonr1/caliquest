@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { Capacitor } from '@capacitor/core'
 import { Geolocation } from '@capacitor/geolocation'
-import { ChevronUp, LocateFixed, MapPin, Plus, Search } from 'lucide-react'
+import { LocateFixed, MapPin, Plus, Search, X } from 'lucide-react'
 import { getNearbyGymsAction, searchGymsAction } from '@/app/(app)/gyms/actions'
 import { LogoutButton } from '@/components/auth/LogoutButton'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
@@ -24,6 +24,12 @@ const DEFAULT_CENTER = { lat: 51.5074, lng: -0.1278 }
 // desktop wherever it's paired with `md:inset-auto`.
 const MOBILE_NAV_CLEARANCE = 'bottom-[calc(4rem+env(safe-area-inset-bottom))]'
 
+// Vertical space the floating mobile header (logo/bell/logout/add-gym)
+// occupies, including its own safe-area padding — the search overlay sits
+// below this on mobile so it doesn't collide with those pills. Desktop has
+// no floating header (see the title row below), so it just uses top-3.
+const MOBILE_HEADER_CLEARANCE = 'top-[calc(env(safe-area-inset-top)+4.25rem)]'
+
 function statusColor(status: GymStatus): string {
   return status === 'verified' ? '#34d399' : '#9ca3af'
 }
@@ -37,10 +43,34 @@ function gymDisplayName(name: string | null, lat: number, lng: number): string {
   return name ?? `Spot near ${lat.toFixed(3)}, ${lng.toFixed(3)}`
 }
 
+function humanizeEquipmentKey(key: string): string {
+  return key.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase())
+}
+
 type GeoState = 'pending' | 'granted' | 'denied' | 'unavailable'
 
 function hasGeolocation(): boolean {
   return typeof navigator !== 'undefined' && 'geolocation' in navigator
+}
+
+// A gym as shown on the map/preview card: NearbyGym or GymSearchResult
+// normalized to one shape, computed separately per source array (rather
+// than narrowing a union per item) so distance stays a plain
+// number | null everywhere else.
+type MapGym = GymSearchResult & { distanceM: number | null }
+
+// Gyms near the user (distance-sorted, from `nearby`) plus anything
+// discovered by panning the map (`viewportGyms`), deduped by id. The
+// near-you gyms keep their real distance; anything only found by
+// exploring the map is appended after with no distance badge, same
+// convention as name search results.
+function mergeGymLists(nearby: NearbyGym[], viewportGyms: NearbyGym[]): MapGym[] {
+  const seen = new Set(nearby.map(g => g.id))
+  const fromNearby = nearby.map(g => ({ ...g, distanceM: g.distance_m as number | null }))
+  const fromViewport = viewportGyms
+    .filter(g => !seen.has(g.id))
+    .map(g => ({ ...g, distanceM: null as number | null }))
+  return [...fromNearby, ...fromViewport]
 }
 
 export function GymsExplorer({ unreadCount }: { unreadCount: number }) {
@@ -57,17 +87,21 @@ export function GymsExplorer({ unreadCount }: { unreadCount: number }) {
   const [userLocation, setUserLocation] = useState(DEFAULT_CENTER)
   const [mapCenter, setMapCenter] = useState(DEFAULT_CENTER)
   const [nearby, setNearby] = useState<NearbyGym[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Gyms loaded around wherever the user last panned the map to, on top of
+  // `nearby` — lets the map surface pins outside the user's own vicinity
+  // as they explore, without disturbing the distance-from-you sort of
+  // `nearby` itself.
+  const [viewportGyms, setViewportGyms] = useState<NearbyGym[]>([])
+  // The gym behind the currently-open preview card — the whole object
+  // (not just an id) since it's populated straight from whichever marker
+  // was tapped, no extra fetch needed.
+  const [selectedGym, setSelectedGym] = useState<MapGym | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [searchResults, setSearchResults] = useState<GymSearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
-  const listItemRefs = useRef<Map<string, HTMLLIElement>>(new Map())
-  // Mobile only — the gym list renders as a sheet overlaid on the
-  // full-screen map, toggled by tapping the map. Desktop always shows the
-  // list alongside the map regardless of this (see the list panel's
-  // md: classes), so this state has no visual effect there.
-  const [showList, setShowList] = useState(true)
+  const viewportFetchIdRef = useRef(0)
 
   useEffect(() => {
     let cancelled = false
@@ -146,45 +180,72 @@ export function GymsExplorer({ unreadCount }: { unreadCount: number }) {
     return () => clearTimeout(timeout)
   }, [query])
 
-  // Selecting a gym on the map (or via the list itself) should bring its
-  // row into view centered in the scrollable list — otherwise picking a
-  // marker off-screen leaves the matching row scrolled out of sight.
-  useEffect(() => {
-    if (!selectedId) return
-    const el = listItemRefs.current.get(selectedId)
-    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [selectedId])
+  const showingSearch = searchOpen && query.trim().length >= 2
 
-  const showingSearch = query.trim().length >= 2
-  const effectiveSearchResults = showingSearch ? searchResults : []
-
-  // Normalize both list sources to one shape up front, computed separately
-  // per source array (rather than narrowing a NearbyGym | GymSearchResult
-  // union per item) so distance stays a plain number | null everywhere else.
-  const listItems = showingSearch
-    ? effectiveSearchResults.map(g => ({ ...g, distanceM: null as number | null }))
-    : nearby.map(g => ({ ...g, distanceM: g.distance_m as number | null }))
+  // What's on the map right now: search matches while actively searching,
+  // otherwise everything discovered near the user / by panning.
+  const mapGyms: MapGym[] = showingSearch
+    ? searchResults.map(g => ({ ...g, distanceM: null as number | null }))
+    : mergeGymLists(nearby, viewportGyms)
 
   const markers = useMemo(
     () =>
-      listItems.map(g => ({
+      mapGyms.map(g => ({
         id: g.id,
         lat: g.lat,
         lng: g.lng,
         color: statusColor(g.status),
       })),
-    [listItems]
+    [mapGyms]
   )
 
-  function selectGym(gym: { id: string; lat: number; lng: number }) {
-    setSelectedId(gym.id)
+  // Loads gyms around a point into `viewportGyms`. Guarded against
+  // out-of-order responses since a fast pan (or a quick search-result
+  // pick right after) can start a new fetch before an older one resolves.
+  function loadViewportGyms(center: { lat: number; lng: number }) {
+    const fetchId = ++viewportFetchIdRef.current
+    startTransition(async () => {
+      const result = await getNearbyGymsAction(center.lat, center.lng)
+      if (fetchId !== viewportFetchIdRef.current) return
+      if (result.ok) setViewportGyms(result.data)
+    })
+  }
+
+  // Fires when the user finishes dragging/zooming the map — loads gyms
+  // around the new spot so pins fill in as they explore, not just around
+  // their own location. Skipped while a name search is active since that
+  // already drives its own pin set.
+  function handleMapMoveEnd(newCenter: { lat: number; lng: number }) {
+    if (showingSearch) return
+    loadViewportGyms(newCenter)
+  }
+
+  function openSearch() {
+    setSelectedGym(null)
+    setSearchOpen(true)
+  }
+
+  function closeSearch() {
+    setSearchOpen(false)
+    setQuery('')
+  }
+
+  function selectSearchResult(gym: GymSearchResult) {
+    setSelectedGym({ ...gym, distanceM: null })
     setMapCenter({ lat: gym.lat, lng: gym.lng })
-    setShowList(true)
+    closeSearch()
+    // The recenter above is programmatic, so it won't trigger the
+    // moveend-driven pin fetch — load pins around the result ourselves so
+    // its marker (and its neighbors) actually show up under the card.
+    loadViewportGyms({ lat: gym.lat, lng: gym.lng })
   }
 
   function recenterOnMe() {
     setMapCenter(userLocation)
   }
+
+  const equipmentEntries = selectedGym ? Object.entries(selectedGym.equipment).filter(([, v]) => v) : []
+  const showBanner = !searchOpen && (geoState === 'denied' || geoState === 'unavailable' || error)
 
   return (
     <div>
@@ -226,166 +287,181 @@ export function GymsExplorer({ unreadCount }: { unreadCount: number }) {
         </Link>
       </div>
 
-      {/* Map — a single instance shared by both layouts (mounting two real
-          MapLibre maps would double tile fetches and WebGL contexts, bad
-          for mid-range phones on gym wifi). Mobile: fixed, full-screen up to
-          the bottom nav, tapping the background toggles the list sheet
-          below. Desktop: normal in-flow card. */}
+      {/* Map — mobile: fixed, full-screen up to the bottom nav. Desktop:
+          normal in-flow card. Everything below (buttons, search overlay,
+          preview card, attribution) is `absolute` *inside* this wrapper,
+          so it inherits whichever positioning context the wrapper is in
+          rather than needing separate mobile/desktop copies. The map is
+          the whole app here: gyms load in as you drag around, tapping a
+          pin opens a small preview card, and search is a toggled overlay —
+          nothing pushes a persistent list into view. */}
       <div
-        className={`fixed inset-x-0 top-0 z-10 overflow-hidden bg-gray-900 ${MOBILE_NAV_CLEARANCE} md:relative md:inset-auto md:z-auto md:h-[55vh] md:rounded-2xl`}
+        className={`fixed inset-x-0 top-0 z-10 overflow-hidden bg-gray-900 ${MOBILE_NAV_CLEARANCE} md:relative md:inset-auto md:z-auto md:h-[70vh] md:rounded-2xl`}
       >
         <GymMap
           center={mapCenter}
           markers={markers}
-          selectedId={selectedId}
+          selectedId={selectedGym?.id ?? null}
           onMarkerClick={id => {
-            setSelectedId(id)
-            setShowList(true)
+            const gym = mapGyms.find(g => g.id === id)
+            if (gym) setSelectedGym(gym)
+            setSearchOpen(false)
           }}
-          onBackgroundClick={() => setShowList(s => !s)}
+          onBackgroundClick={() => setSelectedGym(null)}
           youAreHere={geoState === 'granted' ? userLocation : null}
+          onMoveEnd={handleMapMoveEnd}
         />
 
         {geoState === 'granted' && (
-          <>
-            {/* Mobile recenter button — moves up out of the way when the
-                list sheet is open. */}
-            <button
-              onClick={recenterOnMe}
-              aria-label="Recenter on my location"
-              className={`md:hidden absolute left-3 z-10 flex items-center justify-center h-11 w-11 rounded-full bg-gray-900/90 border border-gray-700 text-emerald-400 shadow-lg transition-[bottom] duration-200 ${
-                // This button's `bottom` is relative to the map wrapper's own
-                // bottom edge, which already sits one MOBILE_NAV_CLEARANCE
-                // above the true viewport bottom — so that offset isn't
-                // repeated here, only the extra clearance above the sheet
-                // (when open) or the nav (when closed).
-                showList ? 'bottom-[calc(50vh+0.75rem)]' : 'bottom-3'
-              }`}
-            >
-              <LocateFixed className="h-5 w-5" />
-            </button>
-            {/* Desktop recenter button — the map card isn't full-screen, so
-                it stays put in the bottom-left corner. */}
-            <button
-              onClick={recenterOnMe}
-              aria-label="Recenter on my location"
-              className="hidden md:flex absolute bottom-3 left-3 items-center justify-center h-11 w-11 rounded-full bg-gray-900/90 border border-gray-700 text-emerald-400 shadow-lg hover:bg-gray-800 transition-colors"
-            >
-              <LocateFixed className="h-5 w-5" />
-            </button>
-          </>
+          <button
+            onClick={recenterOnMe}
+            aria-label="Recenter on my location"
+            className="absolute bottom-3 left-3 z-10 flex items-center justify-center h-11 w-11 rounded-full bg-gray-900/90 border border-gray-700 text-emerald-400 shadow-lg hover:bg-gray-800 transition-colors"
+          >
+            <LocateFixed className="h-5 w-5" />
+          </button>
         )}
-      </div>
 
-      {/* Gym list — mobile: a bottom sheet overlaid on the map, toggled by
-          tapping the map (or the peek pill below); desktop: a normal card
-          below the map, always visible. Kept mounted (just translated
-          off-screen) on mobile even when hidden, so the scroll-into-view
-          effect above can still find a selected row's ref. */}
-      <div
-        className={`fixed inset-x-3 z-20 mb-3 flex max-h-[50vh] flex-col overflow-hidden rounded-2xl border border-gray-800 bg-gray-900 shadow-xl transition-transform duration-200 ${MOBILE_NAV_CLEARANCE} ${
-          showList ? 'translate-y-0' : 'translate-y-[calc(100%+1rem)]'
-        } md:static md:inset-auto md:mx-0 md:mb-0 md:mt-4 md:max-h-none md:translate-y-0 md:shadow-xl`}
-      >
-        <button
-          onClick={() => setShowList(false)}
-          aria-label="Hide gym list"
-          className="md:hidden flex shrink-0 justify-center pt-2 pb-1"
-        >
-          <span className="h-1 w-10 rounded-full bg-gray-700" />
-        </button>
-        <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-1 md:pt-4">
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
-            <input
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="Search gyms by name…"
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-9 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500"
-            />
-          </div>
+        {!searchOpen && (
+          <button
+            onClick={openSearch}
+            aria-label="Search gyms"
+            className="absolute bottom-3 right-3 z-10 flex items-center justify-center h-11 w-11 rounded-full bg-gray-900/90 border border-gray-700 text-emerald-400 shadow-lg hover:bg-gray-800 transition-colors"
+          >
+            <Search className="h-5 w-5" />
+          </button>
+        )}
 
-          {geoState === 'denied' && !showingSearch && (
-            <p className="mb-3 text-xs text-yellow-400/90">
-              Location access denied — showing gyms near London. Search by name or browse the map.
-            </p>
-          )}
-          {geoState === 'unavailable' && !showingSearch && (
-            <p className="mb-3 text-xs text-yellow-400/90">
-              Location isn&apos;t available on this device — showing gyms near London.
-            </p>
-          )}
-          {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
-
-          <ul className="flex-1 space-y-1 overflow-y-auto -mx-1 px-1 md:flex-none md:max-h-[40vh]">
-            {listItems.map(gym => (
-              <li
-                key={gym.id}
-                ref={el => {
-                  if (el) listItemRefs.current.set(gym.id, el)
-                  else listItemRefs.current.delete(gym.id)
-                }}
-              >
-                <button
-                  onClick={() => selectGym(gym)}
-                  className={`w-full flex items-center justify-between gap-2 px-3 py-3 rounded-lg text-left transition-colors ${
-                    selectedId === gym.id ? 'bg-gray-800' : 'hover:bg-gray-800/60'
-                  }`}
-                >
-                  <span className="flex items-center gap-2 min-w-0">
-                    <MapPin
-                      className="h-4 w-4 shrink-0"
-                      style={{ color: statusColor(gym.status) }}
-                    />
-                    <span className="min-w-0">
-                      <span className="block text-sm text-white truncate">
-                        {gymDisplayName(gym.name, gym.lat, gym.lng)}
-                      </span>
-                      <span className="block text-xs text-gray-500">
-                        {gym.status === 'unverified' ? 'Rumored Spot' : 'Verified'}
-                      </span>
-                    </span>
-                  </span>
-                  <span className="flex items-center gap-3 shrink-0">
-                    {gym.distanceM !== null && (
-                      <span className="text-xs text-gray-400">{formatDistance(gym.distanceM)}</span>
-                    )}
-                    <Link
-                      href={`/gyms/${gym.id}${gym.distanceM !== null ? `?distance_m=${Math.round(gym.distanceM)}` : ''}`}
-                      className="p-2.5 -m-2.5 text-emerald-400 text-xs font-semibold hover:text-emerald-300"
-                      onClick={e => e.stopPropagation()}
-                    >
-                      View
-                    </Link>
-                  </span>
-                </button>
-              </li>
-            ))}
-            {listItems.length === 0 && !isPending && (
-              <li className="px-3 py-6 text-center text-sm text-gray-500">
-                {showingSearch ? 'No gyms match that name.' : 'No gyms found nearby yet — add one!'}
-              </li>
+        {showBanner && (
+          <div className={`absolute inset-x-3 z-10 ${MOBILE_HEADER_CLEARANCE} md:top-3`}>
+            {(geoState === 'denied' || geoState === 'unavailable') && (
+              <p className="rounded-xl border border-gray-800 bg-gray-900/95 backdrop-blur px-3 py-2 text-xs text-yellow-400/90 shadow-lg">
+                {geoState === 'denied'
+                  ? 'Location access denied — showing gyms near London. Search by name or browse the map.'
+                  : "Location isn't available on this device — showing gyms near London."}
+              </p>
             )}
-          </ul>
+            {error && (
+              <p className="mt-2 rounded-xl border border-gray-800 bg-gray-900/95 backdrop-blur px-3 py-2 text-sm text-red-400 shadow-lg">
+                {error}
+              </p>
+            )}
+          </div>
+        )}
 
-          <div className="mt-3 pt-3 border-t border-gray-800 shrink-0">
+        {/* Search overlay — pinned near the top so it never fights the
+            bottom-corner buttons or the preview card. */}
+        {searchOpen && (
+          <div className={`absolute inset-x-3 z-20 ${MOBILE_HEADER_CLEARANCE} md:top-3`}>
+            <div className="flex items-center gap-1 rounded-full border border-gray-700 bg-gray-900/95 backdrop-blur pl-4 pr-2 shadow-lg">
+              <Search className="h-4 w-4 text-gray-500 shrink-0" />
+              <input
+                autoFocus
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Search gyms by name…"
+                className="flex-1 min-w-0 bg-transparent text-white text-sm py-2.5 focus:outline-none"
+              />
+              <button
+                onClick={closeSearch}
+                aria-label="Close search"
+                className="p-2.5 -m-2.5 text-gray-400 hover:text-white transition-colors shrink-0"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {showingSearch && (
+              <ul className="mt-2 max-h-[45vh] overflow-y-auto rounded-2xl border border-gray-800 bg-gray-900/95 backdrop-blur shadow-xl divide-y divide-gray-800">
+                {searchResults.map(gym => (
+                  <li key={gym.id}>
+                    <button
+                      onClick={() => selectSearchResult(gym)}
+                      className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-gray-800/60 transition-colors"
+                    >
+                      <MapPin className="h-4 w-4 shrink-0" style={{ color: statusColor(gym.status) }} />
+                      <span className="min-w-0">
+                        <span className="block text-sm text-white truncate">
+                          {gymDisplayName(gym.name, gym.lat, gym.lng)}
+                        </span>
+                        <span className="block text-xs text-gray-500">
+                          {gym.status === 'unverified' ? 'Rumored Spot' : 'Verified'}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+                {searchResults.length === 0 && !isPending && (
+                  <li className="px-4 py-6 text-center text-sm text-gray-500">No gyms match that name.</li>
+                )}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* Gym preview card — floats above the corner buttons so both
+            stay reachable while it's open. */}
+        {selectedGym && !searchOpen && (
+          <div className="absolute inset-x-3 bottom-20 z-10 rounded-2xl border border-gray-800 bg-gray-900/95 backdrop-blur shadow-xl p-4">
+            <button
+              onClick={() => setSelectedGym(null)}
+              aria-label="Close"
+              className="absolute top-2 right-2 p-2.5 text-gray-500 hover:text-white transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <div className="pr-6 min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <MapPin className="h-4 w-4 shrink-0" style={{ color: statusColor(selectedGym.status) }} />
+                <span className="text-sm font-semibold text-white truncate">
+                  {gymDisplayName(selectedGym.name, selectedGym.lat, selectedGym.lng)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
+                <span>{selectedGym.status === 'unverified' ? 'Rumored Spot' : 'Verified'}</span>
+                {selectedGym.distanceM !== null && (
+                  <>
+                    <span>·</span>
+                    <span>{formatDistance(selectedGym.distanceM)}</span>
+                  </>
+                )}
+              </div>
+
+              {equipmentEntries.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {equipmentEntries.slice(0, 4).map(([key]) => (
+                    <span
+                      key={key}
+                      className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-800 text-gray-300"
+                    >
+                      {humanizeEquipmentKey(key)}
+                    </span>
+                  ))}
+                  {equipmentEntries.length > 4 && (
+                    <span className="text-xs text-gray-500 self-center">+{equipmentEntries.length - 4} more</span>
+                  )}
+                </div>
+              )}
+
+              <Link
+                href={`/gyms/${selectedGym.id}${
+                  selectedGym.distanceM !== null ? `?distance_m=${Math.round(selectedGym.distanceM)}` : ''
+                }`}
+                className="mt-3 flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg bg-emerald-500 text-gray-950 text-sm font-semibold hover:bg-emerald-400 transition-colors"
+              >
+                View gym
+              </Link>
+            </div>
+          </div>
+        )}
+
+        <div className="absolute inset-x-0 bottom-3 z-0 flex justify-center pointer-events-none">
+          <div className="pointer-events-auto rounded-full bg-gray-900/80 backdrop-blur px-2.5 py-1">
             <OsmAttribution />
           </div>
         </div>
       </div>
-
-      {/* Peek pill to reopen the sheet on mobile — the tap-anywhere-on-the
-          -map gesture also does this, but this stays visible as a
-          discoverable affordance. */}
-      {!showList && (
-        <button
-          onClick={() => setShowList(true)}
-          className={`md:hidden fixed inset-x-3 z-10 mb-3 flex items-center justify-center gap-1.5 rounded-2xl border border-gray-800 bg-gray-900/95 backdrop-blur px-4 py-3 text-sm font-semibold text-white shadow-xl ${MOBILE_NAV_CLEARANCE}`}
-        >
-          <ChevronUp className="h-4 w-4" />
-          {listItems.length === 0 ? 'Show gyms' : `Show ${listItems.length} nearby gyms`}
-        </button>
-      )}
     </div>
   )
 }
