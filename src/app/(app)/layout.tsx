@@ -36,8 +36,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {children}
       </main>
 
-      {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-20 border-t border-gray-800 bg-gray-950 flex pb-[env(safe-area-inset-bottom)]">
+      {/* Mobile bottom nav — translucent + blurred like a native iOS tab
+          bar, rather than the flat solid bar this used to be. Content
+          scrolling underneath shows through, which is what actually reads
+          as "iOS" here since Capacitor renders our own CSS, not a real
+          UITabBar. */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-20 border-t border-white/10 bg-gray-950/80 backdrop-blur-xl backdrop-saturate-150 flex pb-[env(safe-area-inset-bottom)]">
         <MobilePrimaryNav />
         <MoreNavMenu variant="mobile" />
       </nav>
