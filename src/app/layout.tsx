@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { OfflineBanner } from '@/components/OfflineBanner'
+import { NativeStatusBar } from '@/components/native/NativeStatusBar'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -29,6 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       {/* bg on body so overscroll never flashes white on mobile */}
       <body className="antialiased bg-gray-950 text-gray-100">
+        <NativeStatusBar />
         <OfflineBanner />
         {children}
       </body>
