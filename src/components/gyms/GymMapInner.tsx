@@ -41,6 +41,10 @@ type Props = {
   // move it ourselves via the recenter effect below) — lets the caller
   // load gyms around wherever they've panned to.
   onMoveEnd?: (center: { lat: number; lng: number }) => void
+  // Fired on a click that lands on the bare map, not a marker (marker
+  // clicks stopPropagation before this ever sees them) — used by the
+  // explorer to dismiss a gym's preview card by tapping elsewhere.
+  onMapClick?: () => void
 }
 
 export function GymMapInner({
@@ -53,6 +57,7 @@ export function GymMapInner({
   pickerPosition,
   onPick,
   onMoveEnd,
+  onMapClick,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
@@ -61,11 +66,15 @@ export function GymMapInner({
   const youAreHereMarkerRef = useRef<Marker | null>(null)
   const onPickRef = useRef(onPick)
   const onMoveEndRef = useRef(onMoveEnd)
+  const onMapClickRef = useRef(onMapClick)
   useEffect(() => {
     onPickRef.current = onPick
   })
   useEffect(() => {
     onMoveEndRef.current = onMoveEnd
+  })
+  useEffect(() => {
+    onMapClickRef.current = onMapClick
   })
 
   // Map instance lifecycle — created once per mount.
@@ -85,6 +94,7 @@ export function GymMapInner({
 
     map.on('click', e => {
       onPickRef.current?.(e.lngLat.lat, e.lngLat.lng)
+      onMapClickRef.current?.()
     })
 
     // originalEvent is only set for user-driven moves (drag, scroll/pinch
