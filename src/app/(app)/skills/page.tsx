@@ -1,11 +1,10 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedUser } from '@/lib/supabase/server'
 import { SkillsTree } from '@/components/skills/SkillsTree'
 import { getSkillsWithStatus } from '@/lib/services/skills.service'
 
 export default async function SkillsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) redirect('/login')
 
   const { skills, mgXp } = await getSkillsWithStatus(user.id)

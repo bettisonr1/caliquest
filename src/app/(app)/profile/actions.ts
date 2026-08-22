@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { logger } from '@/lib/logger'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthenticatedUser } from '@/lib/supabase/server'
 import { AVATAR_BACKGROUNDS, AVATAR_EMOJIS, serializeAvatar } from '@/lib/avatar'
 import { toggleFistBump } from '@/lib/services/profile.service'
 import { deleteAccount } from '@/lib/services/account.service'
@@ -20,7 +20,7 @@ export async function updateProfile(input: {
   avatarBackground: string
 }): Promise<UpdateProfileResult> {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) return { ok: false, error: 'Not signed in.' }
 
   const username = input.username.trim()
@@ -66,8 +66,7 @@ const fistBumpErrors: Record<string, string> = {
 export async function toggleFistBumpAction(
   workoutId: string
 ): Promise<{ ok: true; bumped: boolean } | { ok: false; error: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) return { ok: false, error: 'Not signed in.' }
 
   try {
@@ -90,7 +89,7 @@ const deleteAccountErrors: Record<string, string> = {
 // confirmation UI.
 export async function deleteAccountAction(): Promise<{ ok: true } | { ok: false; error: string }> {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) return { ok: false, error: 'Not signed in.' }
 
   const log = logger.child({ userId: user.id, feature: 'account', action: 'deleteAccount' })

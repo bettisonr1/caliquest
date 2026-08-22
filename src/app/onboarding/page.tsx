@@ -1,12 +1,12 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthenticatedUser } from '@/lib/supabase/server'
 import { getAllSkills, getSkillPrerequisites } from '@/lib/repositories/skills.repository'
 import { getProfile } from '@/lib/repositories/profiles.repository'
 import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow'
 
 export default async function OnboardingPage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) redirect('/login')
 
   const profile = await getProfile(supabase, user.id)

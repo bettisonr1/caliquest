@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedUser } from '@/lib/supabase/server'
 import { logger } from '@/lib/logger'
 import { getWorkoutLoggingOptions } from '@/lib/services/workout-logging.service'
 import { parseWorkoutText, transcribeAudio } from '@/lib/services/voice-workout-parsing.service'
@@ -14,8 +14,7 @@ const MIN_AUDIO_BYTES = 2000
 export async function transcribeAudioAction(
   formData: FormData
 ): Promise<{ ok: true; transcript: string } | { ok: false; error: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) return { ok: false, error: 'Not signed in.' }
 
   const audio = formData.get('audio')
@@ -52,8 +51,7 @@ export async function parseWorkoutFromVoiceAction(transcript: string): Promise<
   | { ok: true; entries: Array<{ exerciseId: string; sets: { value: string }[] }>; unmatched: string[] }
   | { ok: false; error: string }
 > {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) return { ok: false, error: 'Not signed in.' }
 
   try {

@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedUser } from '@/lib/supabase/server'
 import { getSquadWall } from '@/lib/services/squads.service'
 import { SquadWall } from '@/components/squads/SquadWall'
 
@@ -9,8 +9,7 @@ export default async function SquadWallPage({
   params: Promise<{ squadId: string }>
 }) {
   const { squadId } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) redirect('/login')
 
   let wall

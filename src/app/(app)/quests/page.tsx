@@ -1,11 +1,10 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedUser } from '@/lib/supabase/server'
 import { getQuestBoard } from '@/lib/services/quests.service'
 import { QuestBoard } from '@/components/quests/QuestBoard'
 
 export default async function QuestsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) redirect('/login')
 
   const board = await getQuestBoard(user.id)

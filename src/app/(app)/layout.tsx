@@ -1,14 +1,26 @@
+import { Suspense } from 'react'
 import { LogoutButton } from '@/components/auth/LogoutButton'
 import { MoreNavMenu } from '@/components/nav/MoreNavMenu'
 import { DesktopPrimaryNav, MobilePrimaryNav } from '@/components/nav/PrimaryNav'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
-import { createClient } from '@/lib/supabase/server'
-import { getUnreadCount } from '@/lib/services/notifications.service'
+import { NotificationBellLoader } from '@/components/notifications/NotificationBellLoader'
+import { getAuthenticatedUser } from '@/lib/supabase/server'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  const unreadCount = user ? await getUnreadCount(user.id) : 0
+  const { data: { user } } = await getAuthenticatedUser()
+
+  // The unread count is fetched by NotificationBellLoader, inside Suspense,
+  // rather than awaited here — this function must stay synchronous-fast so
+  // Next can start streaming the layout (and the route's own loading.tsx
+  // skeleton) immediately instead of stalling behind a DB round trip that
+  // isn't needed for first paint. Fallback shows the bell with no badge.
+  const bell = user ? (
+    <Suspense fallback={<NotificationBell initialUnreadCount={0} />}>
+      <NotificationBellLoader userId={user.id} />
+    </Suspense>
+  ) : (
+    <NotificationBell initialUnreadCount={0} />
+  )
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
@@ -20,12 +32,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <nav className="hidden md:flex items-center gap-1">
             <DesktopPrimaryNav />
             <MoreNavMenu variant="desktop" />
-            <NotificationBell initialUnreadCount={unreadCount} />
+            {bell}
             <LogoutButton />
           </nav>
           {/* The bottom nav has no room for logout/bell, so surface them here on mobile */}
           <div className="md:hidden flex items-center gap-1">
-            <NotificationBell initialUnreadCount={unreadCount} />
+            {bell}
             <LogoutButton iconOnly />
           </div>
         </div>

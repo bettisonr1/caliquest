@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ArrowLeft, CalendarClock, MapPin, Ticket, Users } from 'lucide-react'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthenticatedUser } from '@/lib/supabase/server'
 import { getCompetitionDetail } from '@/lib/services/competitions.service'
 import { getProfile } from '@/lib/repositories/profiles.repository'
 import { CompetitionDateTime } from '@/components/competitions/CompetitionDateTime'
@@ -38,7 +38,7 @@ export default async function CompetitionDetailPage({ params }: { params: Promis
   const { id } = await params
 
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) redirect('/login')
 
   const [detail, profile] = await Promise.all([

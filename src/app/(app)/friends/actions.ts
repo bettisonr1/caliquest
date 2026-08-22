@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedUser } from '@/lib/supabase/server'
 import {
   removeFriend,
   respondToFriendRequest,
@@ -23,8 +23,7 @@ function friendlyError(e: unknown): string {
 export async function searchUsersAction(
   query: string
 ): Promise<{ ok: true; results: PublicProfile[] } | { ok: false; error: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) return { ok: false, error: 'Not signed in.' }
 
   try {
@@ -38,8 +37,7 @@ export async function searchUsersAction(
 export async function sendFriendRequestAction(
   targetUserId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) return { ok: false, error: 'Not signed in.' }
 
   try {
@@ -56,8 +54,7 @@ export async function respondToFriendRequestAction(
   friendshipId: string,
   accept: boolean
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) return { ok: false, error: 'Not signed in.' }
 
   try {
@@ -73,8 +70,7 @@ export async function respondToFriendRequestAction(
 export async function removeFriendAction(
   friendshipId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) return { ok: false, error: 'Not signed in.' }
 
   try {

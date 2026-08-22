@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import type { Logger } from 'pino'
 import { logger } from '@/lib/logger'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedUser } from '@/lib/supabase/server'
 import {
   createSquad,
   inviteToSquad,
@@ -48,8 +48,7 @@ function logActionOutcome(log: Logger, action: string, e: unknown, context: Reco
 }
 
 async function requireUser() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   return user
 }
 

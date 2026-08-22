@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedUser } from '@/lib/supabase/server'
 import { acceptQuest, declineQuest, generateQuestOffer } from '@/lib/services/quests.service'
 import { askGuru, type GuruChatMessage } from '@/lib/services/guru.service'
 
@@ -15,8 +15,7 @@ const questErrorMessages: Record<string, string> = {
 }
 
 async function requireUser() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   return user
 }
 

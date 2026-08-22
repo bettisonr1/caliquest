@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedUser } from '@/lib/supabase/server'
 import {
   logWorkout,
   saveWorkout,
@@ -14,8 +14,7 @@ export async function logWorkoutAction(input: {
   exerciseId: string
   sets: SetInput[]
 }): Promise<{ ok: true; workoutId: string } | { ok: false; error: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) return { ok: false, error: 'NOT_AUTHENTICATED' }
 
   try {
@@ -49,8 +48,7 @@ export async function saveWorkoutAction(
   notes: string | null,
   gymId: string | null = null
 ): Promise<SaveWorkoutResult> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) return { ok: false, error: 'Not signed in.' }
 
   try {

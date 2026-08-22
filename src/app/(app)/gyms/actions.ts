@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import type { Logger } from 'pino'
 import { logger } from '@/lib/logger'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedUser } from '@/lib/supabase/server'
 import {
   addGym,
   adminUpdateGym,
@@ -23,8 +23,7 @@ type RecentGym = Pick<Gym, 'id' | 'name'>
 type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string }
 
 async function requireUser() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   return user
 }
 

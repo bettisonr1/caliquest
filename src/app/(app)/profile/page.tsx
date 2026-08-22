@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { Award, CheckCircle, Dumbbell, Flame, Zap } from 'lucide-react'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthenticatedUser } from '@/lib/supabase/server'
 import { levelProgress } from '@/lib/xp'
 import { getRecentCompletedWorkouts } from '@/lib/repositories/workouts.repository'
 import { getUserPassport } from '@/lib/services/gyms.service'
@@ -22,7 +22,7 @@ const muscleGroups: { group: MuscleGroup; label: string; bar: string; text: stri
 
 export default async function ProfilePage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) redirect('/login')
 
   const [

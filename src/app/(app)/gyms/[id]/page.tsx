@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ArrowLeft, MapPin, Navigation, Plus, Star } from 'lucide-react'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthenticatedUser } from '@/lib/supabase/server'
 import { getGymDetail } from '@/lib/services/gyms.service'
 import { getUpcomingCompetitionsForGym } from '@/lib/services/competitions.service'
 import { getProfile } from '@/lib/repositories/profiles.repository'
@@ -32,7 +32,7 @@ export default async function GymDetailPage({
   const { distance_m } = await searchParams
 
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthenticatedUser()
   if (!user) redirect('/login')
 
   const [detail, profile, upcomingCompetitions] = await Promise.all([
