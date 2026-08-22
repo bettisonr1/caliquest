@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { Capacitor } from '@capacitor/core'
 import { Geolocation } from '@capacitor/geolocation'
-import { LocateFixed, MapPin, Plus, Search } from 'lucide-react'
+import { ChevronDown, LocateFixed, MapPin, Plus, Search } from 'lucide-react'
 import { getNearbyGymsAction, searchGymsAction } from '@/app/(app)/gyms/actions'
 import { GymMap } from './GymMap'
 import { OsmAttribution } from './OsmAttribution'
@@ -33,6 +33,23 @@ function hasGeolocation(): boolean {
   return typeof navigator !== 'undefined' && 'geolocation' in navigator
 }
 
+// Gyms near the user (distance-sorted, from `nearby`) plus anything
+// discovered by panning the map (`viewportGyms`), deduped by id. The
+// near-you gyms keep their real distance and lead the list; anything only
+// found by exploring the map is appended after with no distance badge,
+// same convention as name search results.
+function mergeGymLists(
+  nearby: NearbyGym[],
+  viewportGyms: NearbyGym[]
+): Array<GymSearchResult & { distanceM: number | null }> {
+  const seen = new Set(nearby.map(g => g.id))
+  const fromNearby = nearby.map(g => ({ ...g, distanceM: g.distance_m as number | null }))
+  const fromViewport = viewportGyms
+    .filter(g => !seen.has(g.id))
+    .map(g => ({ ...g, distanceM: null as number | null }))
+  return [...fromNearby, ...fromViewport]
+}
+
 export function GymsExplorer() {
   // Always starts 'pending' — the server has no navigator to check, so
   // deriving this from hasGeolocation() at init would mismatch on hydration
@@ -47,12 +64,21 @@ export function GymsExplorer() {
   const [userLocation, setUserLocation] = useState(DEFAULT_CENTER)
   const [mapCenter, setMapCenter] = useState(DEFAULT_CENTER)
   const [nearby, setNearby] = useState<NearbyGym[]>([])
+  // Gyms loaded around wherever the user last panned the map to, on top of
+  // `nearby` — lets the map/list surface spots outside the user's own
+  // vicinity as they explore, without disturbing the distance-from-you
+  // sort of `nearby` itself.
+  const [viewportGyms, setViewportGyms] = useState<NearbyGym[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [searchResults, setSearchResults] = useState<GymSearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  // The gyms list starts collapsed so the map gets the screen by default —
+  // it opens on demand (tapping the handle, or selecting a gym).
+  const [sheetOpen, setSheetOpen] = useState(false)
   const listItemRefs = useRef<Map<string, HTMLLIElement>>(new Map())
+  const viewportFetchIdRef = useRef(0)
 
   useEffect(() => {
     let cancelled = false
@@ -148,7 +174,7 @@ export function GymsExplorer() {
   // union per item) so distance stays a plain number | null everywhere else.
   const listItems = showingSearch
     ? effectiveSearchResults.map(g => ({ ...g, distanceM: null as number | null }))
-    : nearby.map(g => ({ ...g, distanceM: g.distance_m as number | null }))
+    : mergeGymLists(nearby, viewportGyms)
 
   const markers = useMemo(
     () =>
@@ -161,9 +187,26 @@ export function GymsExplorer() {
     [listItems]
   )
 
+  // Fires when the user finishes dragging/zooming the map — loads gyms
+  // around the new spot so pins (and the list) fill in as they explore,
+  // not just around their own location. Guarded against out-of-order
+  // responses since a fast pan can start a new fetch before an older one
+  // resolves, and skipped entirely while a name search is active since
+  // that already drives its own result set.
+  function handleMapMoveEnd(newCenter: { lat: number; lng: number }) {
+    if (showingSearch) return
+    const fetchId = ++viewportFetchIdRef.current
+    startTransition(async () => {
+      const result = await getNearbyGymsAction(newCenter.lat, newCenter.lng)
+      if (fetchId !== viewportFetchIdRef.current) return
+      if (result.ok) setViewportGyms(result.data)
+    })
+  }
+
   function selectGym(gym: { id: string; lat: number; lng: number }) {
     setSelectedId(gym.id)
     setMapCenter({ lat: gym.lat, lng: gym.lng })
+    setSheetOpen(true)
   }
 
   function recenterOnMe() {
@@ -193,8 +236,12 @@ export function GymsExplorer() {
             center={mapCenter}
             markers={markers}
             selectedId={selectedId}
-            onMarkerClick={id => setSelectedId(id)}
+            onMarkerClick={id => {
+              setSelectedId(id)
+              setSheetOpen(true)
+            }}
             youAreHere={geoState === 'granted' ? userLocation : null}
+            onMoveEnd={handleMapMoveEnd}
           />
           {geoState === 'granted' && (
             <button
@@ -211,90 +258,101 @@ export function GymsExplorer() {
       {/* In-flow "bottom sheet" — visually overlaps the map but stays in
           normal document flow so it composes safely with the fixed bottom
           nav's pb-24 (see CLAUDE.md) instead of needing its own fixed
-          positioning + safe-area math. */}
+          positioning + safe-area math. Collapsed by default (just the
+          handle bar below) so the map gets the screen on first load. */}
       <div className="relative -mt-5 mx-4 md:mx-0 rounded-t-2xl md:rounded-2xl md:mt-4 border border-gray-800 bg-gray-900 shadow-xl">
-        <div className="flex justify-center pt-2 pb-1 md:hidden">
-          <div className="h-1 w-10 rounded-full bg-gray-700" />
-        </div>
+        <button
+          onClick={() => setSheetOpen(o => !o)}
+          aria-expanded={sheetOpen}
+          className="w-full flex flex-col items-center gap-1.5 pt-2 pb-2.5 min-h-11"
+        >
+          <span className="h-1 w-10 rounded-full bg-gray-700 md:hidden" />
+          <span className="flex items-center gap-1.5 text-xs font-medium text-gray-400">
+            {sheetOpen ? 'Hide list' : `Show list${listItems.length > 0 ? ` · ${listItems.length} gyms` : ''}`}
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${sheetOpen ? 'rotate-180' : ''}`} />
+          </span>
+        </button>
 
-        <div className="px-4 pb-4 pt-1">
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
-            <input
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="Search gyms by name…"
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-9 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500"
-            />
-          </div>
+        {sheetOpen && (
+          <div className="px-4 pb-4 pt-1">
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+              <input
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Search gyms by name…"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-9 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500"
+              />
+            </div>
 
-          {geoState === 'denied' && !showingSearch && (
-            <p className="mb-3 text-xs text-yellow-400/90">
-              Location access denied — showing gyms near London. Search by name or browse the map.
-            </p>
-          )}
-          {geoState === 'unavailable' && !showingSearch && (
-            <p className="mb-3 text-xs text-yellow-400/90">
-              Location isn&apos;t available on this device — showing gyms near London.
-            </p>
-          )}
-          {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
+            {geoState === 'denied' && !showingSearch && (
+              <p className="mb-3 text-xs text-yellow-400/90">
+                Location access denied — showing gyms near London. Search by name or browse the map.
+              </p>
+            )}
+            {geoState === 'unavailable' && !showingSearch && (
+              <p className="mb-3 text-xs text-yellow-400/90">
+                Location isn&apos;t available on this device — showing gyms near London.
+              </p>
+            )}
+            {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
 
-          <ul className="space-y-1 max-h-[40vh] overflow-y-auto -mx-1 px-1">
-            {listItems.map(gym => (
-              <li
-                key={gym.id}
-                ref={el => {
-                  if (el) listItemRefs.current.set(gym.id, el)
-                  else listItemRefs.current.delete(gym.id)
-                }}
-              >
-                <button
-                  onClick={() => selectGym(gym)}
-                  className={`w-full flex items-center justify-between gap-2 px-3 py-3 rounded-lg text-left transition-colors ${
-                    selectedId === gym.id ? 'bg-gray-800' : 'hover:bg-gray-800/60'
-                  }`}
+            <ul className="space-y-1 max-h-[40vh] overflow-y-auto -mx-1 px-1">
+              {listItems.map(gym => (
+                <li
+                  key={gym.id}
+                  ref={el => {
+                    if (el) listItemRefs.current.set(gym.id, el)
+                    else listItemRefs.current.delete(gym.id)
+                  }}
                 >
-                  <span className="flex items-center gap-2 min-w-0">
-                    <MapPin
-                      className="h-4 w-4 shrink-0"
-                      style={{ color: statusColor(gym.status) }}
-                    />
-                    <span className="min-w-0">
-                      <span className="block text-sm text-white truncate">
-                        {gymDisplayName(gym.name, gym.lat, gym.lng)}
-                      </span>
-                      <span className="block text-xs text-gray-500">
-                        {gym.status === 'unverified' ? 'Rumored Spot' : 'Verified'}
+                  <button
+                    onClick={() => selectGym(gym)}
+                    className={`w-full flex items-center justify-between gap-2 px-3 py-3 rounded-lg text-left transition-colors ${
+                      selectedId === gym.id ? 'bg-gray-800' : 'hover:bg-gray-800/60'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      <MapPin
+                        className="h-4 w-4 shrink-0"
+                        style={{ color: statusColor(gym.status) }}
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm text-white truncate">
+                          {gymDisplayName(gym.name, gym.lat, gym.lng)}
+                        </span>
+                        <span className="block text-xs text-gray-500">
+                          {gym.status === 'unverified' ? 'Rumored Spot' : 'Verified'}
+                        </span>
                       </span>
                     </span>
-                  </span>
-                  <span className="flex items-center gap-3 shrink-0">
-                    {gym.distanceM !== null && (
-                      <span className="text-xs text-gray-400">{formatDistance(gym.distanceM)}</span>
-                    )}
-                    <Link
-                      href={`/gyms/${gym.id}${gym.distanceM !== null ? `?distance_m=${Math.round(gym.distanceM)}` : ''}`}
-                      className="p-2.5 -m-2.5 text-emerald-400 text-xs font-semibold hover:text-emerald-300"
-                      onClick={e => e.stopPropagation()}
-                    >
-                      View
-                    </Link>
-                  </span>
-                </button>
-              </li>
-            ))}
-            {listItems.length === 0 && !isPending && (
-              <li className="px-3 py-6 text-center text-sm text-gray-500">
-                {showingSearch ? 'No gyms match that name.' : 'No gyms found nearby yet — add one!'}
-              </li>
-            )}
-          </ul>
+                    <span className="flex items-center gap-3 shrink-0">
+                      {gym.distanceM !== null && (
+                        <span className="text-xs text-gray-400">{formatDistance(gym.distanceM)}</span>
+                      )}
+                      <Link
+                        href={`/gyms/${gym.id}${gym.distanceM !== null ? `?distance_m=${Math.round(gym.distanceM)}` : ''}`}
+                        className="p-2.5 -m-2.5 text-emerald-400 text-xs font-semibold hover:text-emerald-300"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        View
+                      </Link>
+                    </span>
+                  </button>
+                </li>
+              ))}
+              {listItems.length === 0 && !isPending && (
+                <li className="px-3 py-6 text-center text-sm text-gray-500">
+                  {showingSearch ? 'No gyms match that name.' : 'No gyms found nearby yet — add one!'}
+                </li>
+              )}
+            </ul>
 
-          <div className="mt-3 pt-3 border-t border-gray-800">
-            <OsmAttribution />
+            <div className="mt-3 pt-3 border-t border-gray-800">
+              <OsmAttribution />
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )
