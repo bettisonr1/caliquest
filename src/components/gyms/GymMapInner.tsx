@@ -37,6 +37,10 @@ type Props = {
   // click-to-place handler (used by the add-gym flow).
   pickerPosition?: { lat: number; lng: number }
   onPick?: (lat: number, lng: number) => void
+  // Fires on a click that lands on the map background (not a marker —
+  // marker click handlers stopPropagation before it can bubble up here).
+  // Used by GymsExplorer's mobile layout to toggle the gym list sheet.
+  onBackgroundClick?: () => void
 }
 
 export function GymMapInner({
@@ -48,6 +52,7 @@ export function GymMapInner({
   youAreHere = null,
   pickerPosition,
   onPick,
+  onBackgroundClick,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
@@ -55,8 +60,10 @@ export function GymMapInner({
   const pickerMarkerRef = useRef<Marker | null>(null)
   const youAreHereMarkerRef = useRef<Marker | null>(null)
   const onPickRef = useRef(onPick)
+  const onBackgroundClickRef = useRef(onBackgroundClick)
   useEffect(() => {
     onPickRef.current = onPick
+    onBackgroundClickRef.current = onBackgroundClick
   })
 
   // Map instance lifecycle — created once per mount.
@@ -76,6 +83,7 @@ export function GymMapInner({
 
     map.on('click', e => {
       onPickRef.current?.(e.lngLat.lat, e.lngLat.lng)
+      onBackgroundClickRef.current?.()
     })
 
     return () => {

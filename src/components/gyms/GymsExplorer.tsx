@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
-import { LocateFixed, MapPin, Plus, Search } from 'lucide-react'
+import { ChevronUp, LocateFixed, MapPin, Plus, Search } from 'lucide-react'
 import { getNearbyGymsAction, searchGymsAction } from '@/app/(app)/gyms/actions'
+import { LogoutButton } from '@/components/auth/LogoutButton'
+import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { GymMap } from './GymMap'
 import { OsmAttribution } from './OsmAttribution'
 import type { GymSearchResult, GymStatus, NearbyGym } from '@/types/database'
@@ -11,6 +13,14 @@ import type { GymSearchResult, GymStatus, NearbyGym } from '@/types/database'
 // Central London — a reasonable default center when geolocation is denied
 // or unavailable (the OSM import's first region is the UK).
 const DEFAULT_CENTER = { lat: 51.5074, lng: -0.1278 }
+
+// Vertical space the fixed mobile bottom nav occupies, including its own
+// safe-area padding — see CLAUDE.md ("overlays the bottom ~4rem"). Anything
+// fixed-positioned on the full-bleed mobile map screen clears the nav by
+// this much instead of relying on layout padding (there isn't any on mobile
+// for this route — see AppShell's fullBleed handling). Neutralized on
+// desktop wherever it's paired with `md:inset-auto`.
+const MOBILE_NAV_CLEARANCE = 'bottom-[calc(4rem+env(safe-area-inset-bottom))]'
 
 function statusColor(status: GymStatus): string {
   return status === 'verified' ? '#34d399' : '#9ca3af'
@@ -31,7 +41,7 @@ function hasGeolocation(): boolean {
   return typeof navigator !== 'undefined' && 'geolocation' in navigator
 }
 
-export function GymsExplorer() {
+export function GymsExplorer({ unreadCount }: { unreadCount: number }) {
   // Always starts 'pending' — the server has no navigator to check, so
   // deriving this from hasGeolocation() at init would mismatch on hydration
   // (server always sees no navigator, client sometimes does).
@@ -51,6 +61,11 @@ export function GymsExplorer() {
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const listItemRefs = useRef<Map<string, HTMLLIElement>>(new Map())
+  // Mobile only — the gym list renders as a sheet overlaid on the
+  // full-screen map, toggled by tapping the map. Desktop always shows the
+  // list alongside the map regardless of this (see the list panel's
+  // md: classes), so this state has no visual effect there.
+  const [showList, setShowList] = useState(true)
 
   useEffect(() => {
     if (!hasGeolocation()) {
@@ -129,6 +144,7 @@ export function GymsExplorer() {
   function selectGym(gym: { id: string; lat: number; lng: number }) {
     setSelectedId(gym.id)
     setMapCenter({ lat: gym.lat, lng: gym.lng })
+    setShowList(true)
   }
 
   function recenterOnMe() {
@@ -137,7 +153,31 @@ export function GymsExplorer() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between gap-3">
+      {/* Mobile-only chrome: the app header is hidden on this route (see
+          AppShell) so its controls float here instead, over the map. */}
+      <div className="md:hidden fixed inset-x-0 top-0 z-20 flex items-center justify-between gap-2 p-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] pointer-events-none">
+        <span className="pointer-events-auto px-3 py-2 rounded-full bg-gray-950/90 backdrop-blur border border-gray-800 text-sm font-bold text-white shadow-lg">
+          Cali<span className="text-emerald-400">Quest</span>
+        </span>
+        <div className="pointer-events-auto flex items-center gap-1.5">
+          <div className="p-0.5 rounded-full bg-gray-950/90 backdrop-blur border border-gray-800 shadow-lg">
+            <NotificationBell initialUnreadCount={unreadCount} />
+          </div>
+          <div className="p-0.5 pr-1 rounded-full bg-gray-950/90 backdrop-blur border border-gray-800 shadow-lg">
+            <LogoutButton iconOnly />
+          </div>
+          <Link
+            href="/gyms/add"
+            aria-label="Add gym"
+            className="flex items-center justify-center h-11 w-11 rounded-full bg-emerald-500 text-gray-950 shadow-lg"
+          >
+            <Plus className="h-5 w-5" />
+          </Link>
+        </div>
+      </div>
+
+      {/* Desktop-only title row. */}
+      <div className="hidden md:flex mb-4 items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Gyms</h1>
           <p className="text-gray-400 text-sm mt-1">Find outdoor bars near you.</p>
@@ -151,38 +191,75 @@ export function GymsExplorer() {
         </Link>
       </div>
 
-      {/* Full-bleed map on mobile — see SkillsTree for the same edge-bleed pattern */}
-      <div className="-mx-4 md:mx-0">
-        <div className="relative h-[45vh] md:h-[55vh] md:rounded-2xl overflow-hidden bg-gray-900">
-          <GymMap
-            center={mapCenter}
-            markers={markers}
-            selectedId={selectedId}
-            onMarkerClick={id => setSelectedId(id)}
-            youAreHere={geoState === 'granted' ? userLocation : null}
-          />
-          {geoState === 'granted' && (
+      {/* Map — a single instance shared by both layouts (mounting two real
+          MapLibre maps would double tile fetches and WebGL contexts, bad
+          for mid-range phones on gym wifi). Mobile: fixed, full-screen up to
+          the bottom nav, tapping the background toggles the list sheet
+          below. Desktop: normal in-flow card. */}
+      <div
+        className={`fixed inset-x-0 top-0 z-10 overflow-hidden bg-gray-900 ${MOBILE_NAV_CLEARANCE} md:relative md:inset-auto md:z-auto md:h-[55vh] md:rounded-2xl`}
+      >
+        <GymMap
+          center={mapCenter}
+          markers={markers}
+          selectedId={selectedId}
+          onMarkerClick={id => {
+            setSelectedId(id)
+            setShowList(true)
+          }}
+          onBackgroundClick={() => setShowList(s => !s)}
+          youAreHere={geoState === 'granted' ? userLocation : null}
+        />
+
+        {geoState === 'granted' && (
+          <>
+            {/* Mobile recenter button — moves up out of the way when the
+                list sheet is open. */}
             <button
               onClick={recenterOnMe}
               aria-label="Recenter on my location"
-              className="absolute bottom-3 left-3 flex items-center justify-center h-11 w-11 rounded-full bg-gray-900/90 border border-gray-700 text-emerald-400 shadow-lg hover:bg-gray-800 transition-colors"
+              className={`md:hidden absolute left-3 z-10 flex items-center justify-center h-11 w-11 rounded-full bg-gray-900/90 border border-gray-700 text-emerald-400 shadow-lg transition-[bottom] duration-200 ${
+                // This button's `bottom` is relative to the map wrapper's own
+                // bottom edge, which already sits one MOBILE_NAV_CLEARANCE
+                // above the true viewport bottom — so that offset isn't
+                // repeated here, only the extra clearance above the sheet
+                // (when open) or the nav (when closed).
+                showList ? 'bottom-[calc(50vh+0.75rem)]' : 'bottom-3'
+              }`}
             >
               <LocateFixed className="h-5 w-5" />
             </button>
-          )}
-        </div>
+            {/* Desktop recenter button — the map card isn't full-screen, so
+                it stays put in the bottom-left corner. */}
+            <button
+              onClick={recenterOnMe}
+              aria-label="Recenter on my location"
+              className="hidden md:flex absolute bottom-3 left-3 items-center justify-center h-11 w-11 rounded-full bg-gray-900/90 border border-gray-700 text-emerald-400 shadow-lg hover:bg-gray-800 transition-colors"
+            >
+              <LocateFixed className="h-5 w-5" />
+            </button>
+          </>
+        )}
       </div>
 
-      {/* In-flow "bottom sheet" — visually overlaps the map but stays in
-          normal document flow so it composes safely with the fixed bottom
-          nav's pb-24 (see CLAUDE.md) instead of needing its own fixed
-          positioning + safe-area math. */}
-      <div className="relative -mt-5 mx-4 md:mx-0 rounded-t-2xl md:rounded-2xl md:mt-4 border border-gray-800 bg-gray-900 shadow-xl">
-        <div className="flex justify-center pt-2 pb-1 md:hidden">
-          <div className="h-1 w-10 rounded-full bg-gray-700" />
-        </div>
-
-        <div className="px-4 pb-4 pt-1">
+      {/* Gym list — mobile: a bottom sheet overlaid on the map, toggled by
+          tapping the map (or the peek pill below); desktop: a normal card
+          below the map, always visible. Kept mounted (just translated
+          off-screen) on mobile even when hidden, so the scroll-into-view
+          effect above can still find a selected row's ref. */}
+      <div
+        className={`fixed inset-x-3 z-20 mb-3 flex max-h-[50vh] flex-col overflow-hidden rounded-2xl border border-gray-800 bg-gray-900 shadow-xl transition-transform duration-200 ${MOBILE_NAV_CLEARANCE} ${
+          showList ? 'translate-y-0' : 'translate-y-[calc(100%+1rem)]'
+        } md:static md:inset-auto md:mx-0 md:mb-0 md:mt-4 md:max-h-none md:translate-y-0 md:shadow-xl`}
+      >
+        <button
+          onClick={() => setShowList(false)}
+          aria-label="Hide gym list"
+          className="md:hidden flex shrink-0 justify-center pt-2 pb-1"
+        >
+          <span className="h-1 w-10 rounded-full bg-gray-700" />
+        </button>
+        <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-1 md:pt-4">
           <div className="relative mb-3">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
             <input
@@ -205,7 +282,7 @@ export function GymsExplorer() {
           )}
           {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
 
-          <ul className="space-y-1 max-h-[40vh] overflow-y-auto -mx-1 px-1">
+          <ul className="flex-1 space-y-1 overflow-y-auto -mx-1 px-1 md:flex-none md:max-h-[40vh]">
             {listItems.map(gym => (
               <li
                 key={gym.id}
@@ -256,11 +333,24 @@ export function GymsExplorer() {
             )}
           </ul>
 
-          <div className="mt-3 pt-3 border-t border-gray-800">
+          <div className="mt-3 pt-3 border-t border-gray-800 shrink-0">
             <OsmAttribution />
           </div>
         </div>
       </div>
+
+      {/* Peek pill to reopen the sheet on mobile — the tap-anywhere-on-the
+          -map gesture also does this, but this stays visible as a
+          discoverable affordance. */}
+      {!showList && (
+        <button
+          onClick={() => setShowList(true)}
+          className={`md:hidden fixed inset-x-3 z-10 mb-3 flex items-center justify-center gap-1.5 rounded-2xl border border-gray-800 bg-gray-900/95 backdrop-blur px-4 py-3 text-sm font-semibold text-white shadow-xl ${MOBILE_NAV_CLEARANCE}`}
+        >
+          <ChevronUp className="h-4 w-4" />
+          {listItems.length === 0 ? 'Show gyms' : `Show ${listItems.length} nearby gyms`}
+        </button>
+      )}
     </div>
   )
 }
