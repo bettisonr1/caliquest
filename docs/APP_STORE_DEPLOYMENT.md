@@ -415,6 +415,10 @@ Rough timeline for a first-time submission:
 - [ ] App icon (1024×1024) + full icon set generated and in the Xcode project
 - [ ] Splash screen matches app background color, no white flash
 - [ ] Status bar styled to match app chrome
+- [x] Status bar styled to match app chrome — `src/components/native/NativeStatusBar.tsx`
+  (mounted in `src/app/layout.tsx`) overlays the WebView and sets light
+  status-bar content via `@capacitor/status-bar`, gated behind
+  `Capacitor.isNativePlatform()` since the plugin has no web implementation
 - [ ] Push notifications wired for at least one real notification type (recommended, not blocking)
 - [x] Offline banner covers mid-session drops (`OfflineBanner.tsx`) — native
   cold-start error page (no network on first load) still needs a

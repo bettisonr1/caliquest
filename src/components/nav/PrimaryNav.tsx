@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { primaryNavItems } from '@/components/nav/nav-items'
+import { triggerNavHaptic } from '@/lib/capacitor/haptics'
 
 // A route is "active" for its own path and any nested path beneath it
 // (e.g. /workout/123 keeps the Workout tab highlighted).
@@ -48,15 +49,19 @@ export function MobilePrimaryNav() {
           <Link
             key={href}
             href={href}
+            // iOS tab bars signal the current tab with icon/label tint
+            // alone (no bar/pill), so a real tab switch also gets the
+            // standard iOS "light impact" tap; re-tapping the tab you're
+            // already on doesn't.
+            onClick={() => {
+              if (!active) triggerNavHaptic()
+            }}
             aria-current={active ? 'page' : undefined}
-            className={`relative flex-1 min-w-0 flex flex-col items-center gap-0.5 py-2 transition-colors ${
+            className={`flex-1 min-w-0 flex flex-col items-center gap-0.5 py-2 transition-colors active:scale-95 ${
               active ? 'text-emerald-400' : 'text-gray-500 hover:text-emerald-400'
             }`}
           >
-            {active && (
-              <span className="absolute top-0 h-0.5 w-8 rounded-full bg-emerald-400" />
-            )}
-            <Icon className="h-5 w-5" />
+            <Icon className={`h-5 w-5 transition-transform ${active ? 'scale-110' : ''}`} />
             <span className="text-[10px] max-w-full truncate px-0.5">{shortLabel}</span>
           </Link>
         )
