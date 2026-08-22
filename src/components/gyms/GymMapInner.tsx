@@ -39,8 +39,12 @@ type Props = {
   onPick?: (lat: number, lng: number) => void
   // Fires on a click that lands on the map background (not a marker —
   // marker click handlers stopPropagation before it can bubble up here).
-  // Used by GymsExplorer's mobile layout to toggle the gym list sheet.
+  // Used by GymsExplorer's mobile layout to dismiss a gym's preview card.
   onBackgroundClick?: () => void
+  // Fired when the user finishes dragging/zooming the map (not when we
+  // move it ourselves via the recenter effect below) — lets the caller
+  // load gyms around wherever they've panned to.
+  onMoveEnd?: (center: { lat: number; lng: number }) => void
 }
 
 export function GymMapInner({
@@ -53,6 +57,7 @@ export function GymMapInner({
   pickerPosition,
   onPick,
   onBackgroundClick,
+  onMoveEnd,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
@@ -61,9 +66,11 @@ export function GymMapInner({
   const youAreHereMarkerRef = useRef<Marker | null>(null)
   const onPickRef = useRef(onPick)
   const onBackgroundClickRef = useRef(onBackgroundClick)
+  const onMoveEndRef = useRef(onMoveEnd)
   useEffect(() => {
     onPickRef.current = onPick
     onBackgroundClickRef.current = onBackgroundClick
+    onMoveEndRef.current = onMoveEnd
   })
 
   // Map instance lifecycle — created once per mount.
@@ -84,6 +91,16 @@ export function GymMapInner({
     map.on('click', e => {
       onPickRef.current?.(e.lngLat.lat, e.lngLat.lng)
       onBackgroundClickRef.current?.()
+    })
+
+    // originalEvent is only set for user-driven moves (drag, scroll/pinch
+    // zoom, double-click) — programmatic ones (the recenter effect's
+    // easeTo, picking a gym) leave it undefined, so this only fires for
+    // actual map exploration, not every time `center` prop changes.
+    map.on('moveend', e => {
+      if (!e.originalEvent) return
+      const c = map.getCenter()
+      onMoveEndRef.current?.({ lat: c.lat, lng: c.lng })
     })
 
     return () => {

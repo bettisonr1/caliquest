@@ -53,12 +53,17 @@ create table if not exists public.skills (
   sort_order      integer not null default 0,
   -- Short, punchy cues for the skill detail page: what good form looks and
   -- feels like once you're in the position/rep. 3-5 per skill.
-  form_cues       text[] not null default '{}'
+  form_cues       text[] not null default '{}',
+  -- Direct link to a hosted demo clip (mp4/webm or a YouTube/Vimeo embed
+  -- URL) shown on the skill detail page. Nullable — most skills won't have
+  -- one yet; populated by hand per skill, not by the app.
+  demo_video_url  text
 );
 
--- Migration for databases created before the skill detail page existed
--- ("create table if not exists" above won't add new columns):
+-- Migrations for databases created before these skill detail page columns
+-- existed ("create table if not exists" above won't add new columns):
 alter table public.skills add column if not exists form_cues text[] not null default '{}';
+alter table public.skills add column if not exists demo_video_url text;
 
 -- Prerequisite edges (many-to-many)
 create table if not exists public.skill_prerequisites (
